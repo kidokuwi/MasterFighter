@@ -1,3 +1,4 @@
+__author__ = "Ido Keysar"
 import constants
 
 class Pose:
