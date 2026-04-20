@@ -1,3 +1,5 @@
+__author__ = "Ido Keysar"
+
 defaultUserWidth = 50
 defaultUserHeight = 80
 defaultKnockbackMult = 20
