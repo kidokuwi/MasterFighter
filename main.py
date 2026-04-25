@@ -64,13 +64,11 @@ class Player:
         return self.invinciblityTimer > 0
     def isOnAttackCooldown(self):
         return self.attkCooldown > 0
+
     def updateStatuses(self, timePassed):
-        if self.isStunned():
-            self.stunTimer -= timePassed
-        if self.isInvincible():
-            self.invinciblityTimer -= timePassed
-        if self.isOnAttackCooldown():
-            self.attkCooldown -= timePassed
+        self.stunTimer = max(0, self.stunTimer - timePassed)
+        self.invinciblityTimer = max(0, self.invinciblityTimer - timePassed)
+        self.attkCooldown = max(0, self.attkCooldown - timePassed)
 
     def updatePose(self, timePassed):
         self.updateStatuses(timePassed)
@@ -95,8 +93,7 @@ class GameSession:
         if attacker.isStunned() or attacker.isOnAttackCooldown(): return
 
         move = attacker.weapon.moves.get(attackType)
-        direction = 1
-        if (attacker.velX < 0): direction = -1
+        direction = 1 if (attacker.facingRight < 0) else -1
         attackX = attacker.currentPose.x + (move.offsetX*direction)
         attackY = attacker.currentPose.y + (move.offsetY)
         attackPose = Pose(attackX, attackY)
