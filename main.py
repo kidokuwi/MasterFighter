@@ -74,10 +74,11 @@ class Player:
         self.updateStatuses(timePassed)
         if not self.isOnGround:
             self.velY += constants.gravity
+            self.velX *= constants.frictionMult
+        self.velX *= constants.frictionMult
         self.currentPose.x += self.velX
         self.currentPose.y += self.velY
 
-        self.velX *= constants.frictionMult
 
 class GameSession:
     def __init__(self, objects, players, sessionMap):
