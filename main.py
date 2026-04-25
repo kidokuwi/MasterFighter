@@ -5,9 +5,8 @@ class Pose:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-class Weapon:
-    def __init__(self, name, dmg, rangeX, rangeY, offsetX, offsetY, atkSpeed, stun):
-        self.name = name
+class Attack:
+    def __init__(self, dmg, rangeX, rangeY, offsetX, offsetY, atkSpeed, stun, knockbackMult):
         self.dmg = dmg
         self.rangeX = rangeX
         self.rangeY = rangeY
@@ -15,6 +14,15 @@ class Weapon:
         self.offsetY = offsetY
         self.atkSpeed = atkSpeed
         self.stun = stun
+        self.knockbackMult = knockbackMult
+
+class Weapon:
+    def __init__(self, name):
+        self.name = name
+        self.moves = {} # prob implement left right up down + spacial
+
+    def addMove(self, moveType, attackObj):
+        self.moves[moveType] = attackObj
 class HitBox:
     def __init__(self, pose, width, height):
         self.pose = pose
@@ -42,10 +50,13 @@ class Player:
         self.velY = 0
         self.isOnGround = False
 
+        self.facingRight = False
         self.stunTimer = 0
         self.invinciblityTimer = 0
         self.attkCooldown = 0
 
+    def isFacingRight(self):
+        return 1 if self.facingRight else 0
 
     def isStunned(self):
         return self.stunTimer > 0
@@ -65,33 +76,41 @@ class Player:
         self.updateStatuses(timePassed)
         if not self.isOnGround:
             self.velY += constants.gravity
-        self.currentPose.pose.x += self.velX
-        self.currentPose.pose.y += self.velY
+        self.currentPose.x += self.velX
+        self.currentPose.y += self.velY
 
         self.velX *= constants.frictionMult
 
 class GameSession:
-    def __init__(self, objects, players, map):
+    def __init__(self, objects, players, sessionMap):
         self.objects = objects
         self.players = players # player:sock
-        self.map = map
-    def update(self):
-        pass
-    def handleAttack(self, attacker):
+        self.sessionMap = sessionMap
+
+    def update(self, timePassed):
+        for player in self.players.keys():
+            player.updatePose(timePassed)
+
+    def handleAttack(self, attacker, attackType):
         if attacker.isStunned() or attacker.isOnAttackCooldown(): return
 
+        move = attacker.weapon.moves.get(attackType)
         direction = 1
         if (attacker.velX < 0): direction = -1
-        attackX = attacker.currentPose.x + (attacker.weapon.offsetX*direction)
-        attackY = attacker.currentPose.x + (attacker.weapon.offsetY)
+        attackX = attacker.currentPose.x + (move.offsetX*direction)
+        attackY = attacker.currentPose.y + (move.offsetY)
         attackPose = Pose(attackX, attackY)
-        attackHitbox = HitBox(attackPose, attacker.weapon.rangeX, attacker.weapon.rangeY)
+        attackHitbox = HitBox(attackPose, move.rangeX, move.rangeY)
 
-        attacker.attkCooldown = attacker.weapon.atkSpeed
+        attacker.attkCooldown = move.atkSpeed
 
         for player in self.players:
             if player != attacker:
                 if attackHitbox.checkCollision(player):
-                    player.hp += attacker.weapon.dmg
-                    print(f"hit {player.name}")
+                    player.hp += move.dmg
+                    print(f"hit {player.user.username}")
                     player.velX += player.hp*constants.defaultKnockbackMult*direction
+                    if attackType == "up":
+                        player.velY += player.hp*constants.defaultKnockbackMult*direction
+                    elif attackType == "down":
+                        player.velY -= player.hp*constants.defaultKnockbackMult*direction
