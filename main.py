@@ -74,11 +74,15 @@ class Player:
         self.updateStatuses(timePassed)
         if not self.isOnGround:
             self.velY += constants.gravity
+        else:
             self.velX *= constants.frictionMult
         self.velX *= constants.frictionMult
         self.currentPose.x += self.velX
         self.currentPose.y += self.velY
 
+class Platform:
+    def __init__(self, pose, width, height):
+        self.hitBox = HitBox(pose, width, height)
 
 class GameSession:
     def __init__(self, objects, players, sessionMap):
@@ -89,12 +93,19 @@ class GameSession:
     def update(self, timePassed):
         for player in self.players.keys():
             player.updatePose(timePassed)
+            player.isOnGround = False
+            for platform in self.sessionMap.platforms:
+                if player.hitBox.checkCollision(platform.hitbox):
+                    player.isOnGround = True
+                    player.currentPose.y = platform.pose.y - (platform.hitbox.height/2 + player.hitBox.height/2)
+                    player.velY = 0
+
 
     def handleAttack(self, attacker, attackType):
         if attacker.isStunned() or attacker.isOnAttackCooldown(): return
 
         move = attacker.weapon.moves.get(attackType)
-        direction = 1 if (attacker.facingRight < 0) else -1
+        direction = 1 if (attacker.facingRight) else -1
         attackX = attacker.currentPose.x + (move.offsetX*direction)
         attackY = attacker.currentPose.y + (move.offsetY)
         attackPose = Pose(attackX, attackY)
@@ -103,12 +114,15 @@ class GameSession:
         attacker.attkCooldown = move.atkSpeed
 
         for player in self.players:
-            if player != attacker:
-                if attackHitbox.checkCollision(player):
+            if player != attacker and not player.isInvincible():
+                if attackHitbox.checkCollision(player.hitBox):
+
                     player.hp += move.dmg
                     print(f"hit {player.user.username}")
                     player.velX += player.hp*constants.defaultKnockbackMult*direction
+                    player.stunTimer = move.stun
                     if attackType == "up":
                         player.velY += player.hp*constants.defaultKnockbackMult*direction
                     elif attackType == "down":
                         player.velY -= player.hp*constants.defaultKnockbackMult*direction
+
