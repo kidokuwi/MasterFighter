@@ -1,5 +1,23 @@
 __author__ = "Ido Keysar"
+
+import hashlib
+import secrets
+
 import constants
+import socket
+import threading
+import json
+import queue
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.backends import default_backend
+import os
+
+PEPPER = "2222222" #TODO:PUT
+PRIVATE_KEY_FILE = "private_key.pem"
+PUBLIC_KEY_FILE = "public_key.pem"
+KEY_PASSWORD = b'11111111' # to secure rsa
 
 class Pose:
     def __init__(self, x, y):
@@ -80,9 +98,46 @@ class Player:
         self.currentPose.x += self.velX
         self.currentPose.y += self.velY
 
+
 class Platform:
     def __init__(self, pose, width, height):
         self.hitBox = HitBox(pose, width, height)
+
+
+class UserManager:
+    def __init__(self, db_file="users.json"):
+        self.db_file = db_file
+        self.users = self.load_db()
+
+    def load_db(self):
+        if os.path.exists(self.db_file):
+            with open(self.db_file, "r") as f: return json.load(f)
+        return {}
+
+    def save_db(self):
+        with open(self.db_file, "w") as f: json.dump(self.users, f)
+
+    def register(self, username, password):
+        if username in self.users: return False
+
+        salt = secrets.token_hex(16)
+        hashed_pw = hashlib.sha256((password + salt + PEPPER).encode()).hexdigest()
+
+        self.users[username] = {
+            "password": hashed_pw,
+            "salt": salt,
+            "wins": 0,
+            "loses": 0
+        }
+        self.save_db()
+        return True
+
+    def login(self, username, password):
+        user_data = self.users.get(username)
+        if not user_data: return False
+
+        check_hash = hashlib.sha256((password + user_data["salt"] + PEPPER).encode()).hexdigest()
+        return check_hash == user_data["password"]
 
 class GameSession:
     def __init__(self, objects, players, sessionMap):
@@ -126,3 +181,149 @@ class GameSession:
                     elif attackType == "down":
                         player.velY -= player.hp*constants.defaultKnockbackMult*direction
 
+
+def send_msg(sock, data):
+    length = str(len(data)).zfill(8) #TODO: CONSTANTS
+    sock.sendall(length.encode() + data)
+
+
+def recv_msg(sock):
+    header = sock.recv(8)
+    if not header: return None
+    length = int(header.decode())
+
+    chunks = []
+    bytes_recd = 0
+    while bytes_recd < length:
+        chunk = sock.recv(min(length - bytes_recd, 2048))
+        if not chunk: break
+        chunks.append(chunk)
+        bytes_recd += len(chunk)
+    return b"".join(chunks)
+
+class SecureSession:
+    def __init__(self, key, aad=b""):
+        self.aesgcm = AESGCM(key)
+        self.aad = aad
+
+    def encrypt(self, plaintext_bytes):
+        nonce = os.urandom(12)
+        ciphertext = self.aesgcm.encrypt(nonce, plaintext_bytes, self.aad)
+        return nonce + ciphertext
+
+    def decrypt(self, data):
+        nonce = data[:12]
+        ciphertext = data[12:]
+        return self.aesgcm.decrypt(nonce, ciphertext, self.aad)
+
+class GameServer:
+    def __init__(self, host, port):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((host, port))
+        self.server_socket.listen()
+
+        self.input_queue = queue.Queue()
+        self.clients = {}
+        self.session = GameSession([], self.clients, None)
+        self.user_manager = UserManager("users.json")
+
+        self.private_key, self.public_key_bytes = self.get_keys()
+        self.client_sessions = {}  #socket:SecureSession
+
+    def get_keys(self):
+        if os.path.exists(PRIVATE_KEY_FILE):
+            with open(PRIVATE_KEY_FILE, "rb") as f:
+                private_key = serialization.load_pem_private_key(f.read(), password=KEY_PASSWORD, backend=default_backend())
+
+            public_key_bytes = private_key.public_key().public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo)
+
+        else:
+            private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            pem_private = private_key.private_bytes(encoding=serialization.Encoding.PEM,format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.BestAvailableEncryption(KEY_PASSWORD))
+            public_key_bytes = private_key.public_key().public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo)
+
+            with open(PRIVATE_KEY_FILE, "wb") as f:
+                f.write(pem_private)
+
+        return private_key, public_key_bytes
+
+    def handshake(self, client_socket):
+        send_msg(client_socket, self.public_key_bytes)
+
+        encrypted_aes_key = recv_msg(client_socket)
+
+        aes_key = self.private_key.decrypt(
+            encrypted_aes_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        return SecureSession(aes_key)
+
+    def handle_client(self, client_socket, player):
+        try:
+            session = self.handshake(client_socket)
+
+            auth_data = recv_msg(client_socket)
+            if not auth_data: return
+
+            auth_json = json.loads(session.decrypt(auth_data).decode())
+            action = auth_json.get("action")  # should be login/register
+            username = auth_json.get("username")
+            password = auth_json.get("password")
+
+            if action == "register":
+                success = self.user_manager.register(username, password)
+                msg = "Register successful" if success else "Invalid registeration"
+            else:  # login
+                success = self.user_manager.login(username, password)
+                msg = "Login successful" if success else "Invalid username or password"
+            #111111111111111 TODO:
+
+            response = json.dumps({"success": success, "message": msg}).encode()
+            send_msg(client_socket, session.encrypt(response))
+
+            if not success:
+                client_socket.close()
+                return
+
+
+            db_user = self.user_manager.users[username]
+            user_obj = User(username, "********", db_user["wins"], db_user["loses"])
+            player = Player(user_obj, Pose(100, 100), None)
+
+            self.clients[player] = client_socket
+            self.client_sessions[client_socket] = session
+
+            while True:
+                encrypted_data = recv_msg(client_socket)
+                if not encrypted_data: break
+
+                decrypted_json = session.decrypt(encrypted_data).decode()
+                message = json.loads(decrypted_json)
+                self.input_queue.put((player, message))
+
+        except Exception as e:
+            print(f"Error handling client: {e}")
+        finally:
+            client_socket.close()
+
+    def main_loop(self):
+        while True:
+            while not self.input_queue.empty():
+                player, msg = self.input_queue.get()
+                self.process_input(player, msg)
+
+            self.session.update(1 / 60) #60fps might change later TODO: put in constants
+
+            self.broadcast_state()
+
+    def process_input(self, player, msg):
+        action = msg.get("action")
+        if action == "attack":
+            self.session.handleAttack(player, msg.get("type"))
+        elif action == "move":
+            pass
