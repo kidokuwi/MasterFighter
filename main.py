@@ -2,6 +2,7 @@ __author__ = "Ido Keysar"
 
 import hashlib
 import secrets
+from threading import main_thread
 
 import constants
 import socket
@@ -149,11 +150,12 @@ class GameSession:
         for player in self.players.keys():
             player.updatePose(timePassed)
             player.isOnGround = False
-            for platform in self.sessionMap.platforms:
-                if player.hitBox.checkCollision(platform.hitbox):
-                    player.isOnGround = True
-                    player.currentPose.y = platform.pose.y - (platform.hitbox.height/2 + player.hitBox.height/2)
-                    player.velY = 0
+            if self.sessionMap:
+                for platform in self.sessionMap.platforms:
+                    if player.hitBox.checkCollision(platform.hitbox):
+                        player.isOnGround = True
+                        player.currentPose.y = platform.pose.y - (platform.hitbox.height/2 + player.hitBox.height/2)
+                        player.velY = 0
 
 
     def handleAttack(self, attacker, attackType):
@@ -202,28 +204,28 @@ def recv_msg(sock):
     return b"".join(chunks)
 
 class SecureSession:
-    def __init__(self, key, aad=b""):
+    def __init__(self, key):
         self.aesgcm = AESGCM(key)
-        self.aad = aad
 
     def encrypt(self, plaintext_bytes):
         nonce = os.urandom(12)
-        ciphertext = self.aesgcm.encrypt(nonce, plaintext_bytes, self.aad)
+        ciphertext = self.aesgcm.encrypt(nonce, plaintext_bytes, b"")
         return nonce + ciphertext
 
     def decrypt(self, data):
         nonce = data[:12]
         ciphertext = data[12:]
-        return self.aesgcm.decrypt(nonce, ciphertext, self.aad)
+        return self.aesgcm.decrypt(nonce, ciphertext, b"")
+
 
 class GameServer:
     def __init__(self, host, port):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = socket.socket()
         self.server_socket.bind((host, port))
         self.server_socket.listen()
 
         self.input_queue = queue.Queue()
-        self.clients = {}
+        self.clients = {} #Player:socket
         self.session = GameSession([], self.clients, None)
         self.user_manager = UserManager("users.json")
 
@@ -263,7 +265,7 @@ class GameServer:
         )
         return SecureSession(aes_key)
 
-    def handle_client(self, client_socket, player):
+    def handle_client(self, client_socket):
         try:
             session = self.handshake(client_socket)
 
@@ -281,7 +283,6 @@ class GameServer:
             else:  # login
                 success = self.user_manager.login(username, password)
                 msg = "Login successful" if success else "Invalid username or password"
-            #111111111111111 TODO:
 
             response = json.dumps({"success": success, "message": msg}).encode()
             send_msg(client_socket, session.encrypt(response))
@@ -290,9 +291,8 @@ class GameServer:
                 client_socket.close()
                 return
 
-
             db_user = self.user_manager.users[username]
-            user_obj = User(username, "********", db_user["wins"], db_user["loses"])
+            user_obj = User(username, db_user["password"], db_user["wins"], db_user["loses"])
             player = Player(user_obj, Pose(100, 100), None)
 
             self.clients[player] = client_socket
@@ -311,6 +311,25 @@ class GameServer:
         finally:
             client_socket.close()
 
+    def broadcast_state(self):
+        game_state = {"players" : []}
+        players = self.client_sessions.keys()
+        for player in players:
+            game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
+                                          "hp": player.hp, "facingRight" : player.facingRight
+                                        , "weapon" : player.weapon.name if player.weapon.name else "", "isInvincible": player.isInvincible(),
+                                          "isStunned": player.isStunned, "isOnAttackCooldown": player.isOnAttackCooldown()})
+
+        json_state = json.dumps(game_state).encode()
+        for player in players:
+            try:
+                session = self.client_sessions[self.clients[player]]
+                if session:
+                    send_msg(self.clients[player], session.encrypt(json_state))
+            except Exception as e:
+                print(f"Error handling client:{player.user.username} : {e}")
+
+
     def main_loop(self):
         while True:
             while not self.input_queue.empty():
@@ -327,3 +346,19 @@ class GameServer:
             self.session.handleAttack(player, msg.get("type"))
         elif action == "move":
             pass
+
+if __name__ == "__main__":
+    server = GameServer("0.0.0.0", 3141)
+    main_game_thread = threading.Thread(target=server.main_loop, daemon=True)
+    main_game_thread.start()
+    print("started!!!!!")
+    try:
+        while True:
+            cli_sock, addr = server.server_socket.accept()
+            print("conection from", addr)
+            cli_thread = threading.Thread(target=server.handle_client, args=(cli_sock, ))
+            cli_thread.start()
+    except Exception as e:
+        print(e)
+    finally:
+        server.server_socket.close()
