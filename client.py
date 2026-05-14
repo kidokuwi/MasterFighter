@@ -1,5 +1,7 @@
 __author__ = "Ido Keysar"
 
+import threading
+
 from main import send_msg, recv_msg, SecureSession
 import socket
 import json
@@ -8,6 +10,22 @@ import pygame
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
+current_game_state = {"players": []}
+
+
+def receiver_thread(sock, session):
+    global current_game_state
+    while True:
+        try:
+            data = recv_msg(sock)
+            if not data: break
+
+            decrypted = session.decrypt(data)
+            current_game_state = json.loads(decrypted.decode())
+        except:
+            break
 
 
 def connect_to_server(host, port):
@@ -47,6 +65,8 @@ def main():
         return
 
     print("login")
+    threading.Thread(target=receiver_thread, args=(sock, session), daemon=True).start()
+
 
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
@@ -54,6 +74,12 @@ def main():
 
     running = True
     while running:
+        for p in current_game_state["players"]:
+            pygame.draw.rect(screen, (255, 0, 0), (int(p["x"]), int(p["y"]), 50, 50))
+            font = pygame.font.SysFont(None, 24)
+            img = font.render(p["username"], True, (255, 255, 255))
+            screen.blit(img, (p["x"], p["y"] - 20))
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False

@@ -140,6 +140,12 @@ class UserManager:
         check_hash = hashlib.sha256((password + user_data["salt"] + PEPPER).encode()).hexdigest()
         return check_hash == user_data["password"]
 
+
+class SessionMap:
+    def __init__(self, platforms, name):
+        self.platforms = platforms
+        self.name = name
+
 class GameSession:
     def __init__(self, objects, players, sessionMap):
         self.objects = objects
@@ -152,9 +158,9 @@ class GameSession:
             player.isOnGround = False
             if self.sessionMap:
                 for platform in self.sessionMap.platforms:
-                    if player.hitBox.checkCollision(platform.hitbox):
+                    if player.hitBox.checkCollision(platform.hitBox):
                         player.isOnGround = True
-                        player.currentPose.y = platform.pose.y - (platform.hitbox.height/2 + player.hitBox.height/2)
+                        player.currentPose.y = platform.pose.y - (platform.hitBox.height/2 + player.hitBox.height/2)
                         player.velY = 0
 
 
@@ -226,7 +232,7 @@ class GameServer:
 
         self.input_queue = queue.Queue()
         self.clients = {} #Player:socket
-        self.session = GameSession([], self.clients, None)
+        self.session = GameSession([], self.clients, SessionMap({Platform(Pose(0,0), 100, 100)}, "unnammed"))
         self.user_manager = UserManager("users.json")
 
         self.private_key, self.public_key_bytes = self.get_keys()
@@ -266,6 +272,7 @@ class GameServer:
         return SecureSession(aes_key)
 
     def handle_client(self, client_socket):
+        player = None
         try:
             session = self.handshake(client_socket)
 
@@ -309,16 +316,20 @@ class GameServer:
         except Exception as e:
             print(f"Error handling client: {e}")
         finally:
+            if player in self.clients:
+                del self.clients[player]
+            if client_socket in self.client_sessions:
+                del self.client_sessions[client_socket]
             client_socket.close()
 
     def broadcast_state(self):
         game_state = {"players" : []}
-        players = self.client_sessions.keys()
+        players = self.clients.keys()
         for player in players:
             game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
                                           "hp": player.hp, "facingRight" : player.facingRight
-                                        , "weapon" : player.weapon.name if player.weapon.name else "", "isInvincible": player.isInvincible(),
-                                          "isStunned": player.isStunned, "isOnAttackCooldown": player.isOnAttackCooldown()})
+                                        , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
+                                          "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown()})
 
         json_state = json.dumps(game_state).encode()
         for player in players:
