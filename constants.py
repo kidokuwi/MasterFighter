@@ -4,4 +4,7 @@ defaultUserWidth = 50
 defaultUserHeight = 80
 defaultKnockbackMult = 20
 frictionMult = 0.9
-gravity = -10
+gravity = 0.01
+
+walking_speed = 5
+running_speed = 10

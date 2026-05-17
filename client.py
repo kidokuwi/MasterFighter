@@ -24,7 +24,8 @@ def receiver_thread(sock, session):
 
             decrypted = session.decrypt(data)
             current_game_state = json.loads(decrypted.decode())
-        except:
+        except Exception as e:
+            print(e)
             break
 
 
@@ -69,16 +70,43 @@ def main():
 
 
     pygame.init()
-    screen = pygame.display.set_mode((800, 600))
+    screen = pygame.display.set_mode((1920, 1080))
     clock = pygame.time.Clock()
 
     running = True
     while running:
+        screen.fill((30, 30, 30))
+        for plat in current_game_state.get("platforms", []):
+            rect_x = plat["x"] - (plat["w"] / 2)
+            rect_y = plat["y"] - (plat["h"] / 2)
+            pygame.draw.rect(screen, (100, 100, 100), (rect_x, rect_y, plat["w"], plat["h"]))
+
+
         for p in current_game_state["players"]:
-            pygame.draw.rect(screen, (255, 0, 0), (int(p["x"]), int(p["y"]), 50, 50))
-            font = pygame.font.SysFont(None, 24)
-            img = font.render(p["username"], True, (255, 255, 255))
-            screen.blit(img, (p["x"], p["y"] - 20))
+            try:
+                x, y = int(p["x"]), int(p["y"])
+                pygame.draw.rect(screen, (255, 0, 0), (x, y, 50, 50))
+                font = pygame.font.SysFont(None, 24)
+                img = font.render(p["username"], True, (255, 255, 255))
+                screen.blit(img, (x, y - 20))
+            except Exception as e:
+                print(e)
+
+        keys = pygame.key.get_pressed()
+        move_action = None
+
+        player_running = False
+        if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
+            player_running = True
+
+        if keys[pygame.K_a]:
+            move_action = {"action": "move", "direction": "left", "run": player_running}
+        elif keys[pygame.K_d]:
+            move_action = {"action": "move", "direction": "right" , "run": player_running}
+        else:
+            move_action = {"action": "move", "direction": "none" , "run": player_running}
+
+        send_msg(sock, session.encrypt(json.dumps(move_action).encode()))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -87,14 +115,15 @@ def main():
             if event.type == pygame.KEYDOWN:
                 action = None
                 if event.key == pygame.K_SPACE:
-                    action = {"action": "attack", "type": "neutral"}
+                    action = {"action": "attack", "type": "natural"}
 
                 if action:
                     encrypted_action = session.encrypt(json.dumps(action).encode())
                     send_msg(sock, encrypted_action)
 
-        screen.fill((30, 30, 30))
         pygame.display.flip()
+
+
         clock.tick(60)
 
     pygame.quit()

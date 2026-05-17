@@ -2,6 +2,7 @@ __author__ = "Ido Keysar"
 
 import hashlib
 import secrets
+import time
 from threading import main_thread
 
 import constants
@@ -36,9 +37,9 @@ class Attack:
         self.knockbackMult = knockbackMult
 
 class Weapon:
-    def __init__(self, name):
+    def __init__(self, name, moves):
         self.name = name
-        self.moves = {} # prob implement left right up down + spacial
+        self.moves = moves # prob implement left right up down + spacial
 
     def addMove(self, moveType, attackObj):
         self.moves[moveType] = attackObj
@@ -160,7 +161,7 @@ class GameSession:
                 for platform in self.sessionMap.platforms:
                     if player.hitBox.checkCollision(platform.hitBox):
                         player.isOnGround = True
-                        player.currentPose.y = platform.pose.y - (platform.hitBox.height/2 + player.hitBox.height/2)
+                        player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
 
 
@@ -232,7 +233,7 @@ class GameServer:
 
         self.input_queue = queue.Queue()
         self.clients = {} #Player:socket
-        self.session = GameSession([], self.clients, SessionMap({Platform(Pose(0,0), 100, 100)}, "unnammed"))
+        self.session = GameSession([], self.clients, SessionMap([Platform(Pose(400,500), 800, 100)], "unnammed"))
         self.user_manager = UserManager("users.json")
 
         self.private_key, self.public_key_bytes = self.get_keys()
@@ -298,9 +299,15 @@ class GameServer:
                 client_socket.close()
                 return
 
+            no_weapon = Weapon("none", {"right" : Attack(10,50,50,10,0,
+                                                         10,1,2),
+                                        "left" : Attack(10,50,50,10,0,
+                                                         10,1,2),
+                                        "natural" : Attack(10,50,50,10,0,
+                                                         10,1,2)})
             db_user = self.user_manager.users[username]
             user_obj = User(username, db_user["password"], db_user["wins"], db_user["loses"])
-            player = Player(user_obj, Pose(100, 100), None)
+            player = Player(user_obj, Pose(300, 400), no_weapon)
 
             self.clients[player] = client_socket
             self.client_sessions[client_socket] = session
@@ -323,13 +330,22 @@ class GameServer:
             client_socket.close()
 
     def broadcast_state(self):
-        game_state = {"players" : []}
+        game_state = {"players" : [],
+                      "platforms": []}
         players = self.clients.keys()
         for player in players:
             game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
                                           "hp": player.hp, "facingRight" : player.facingRight
                                         , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
                                           "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown()})
+        if self.session.sessionMap:
+            for plat in self.session.sessionMap.platforms:
+                game_state["platforms"].append({
+                    "x": plat.hitBox.pose.x,
+                    "y": plat.hitBox.pose.y,
+                    "w": plat.hitBox.width,
+                    "h": plat.hitBox.height
+                })
 
         json_state = json.dumps(game_state).encode()
         for player in players:
@@ -343,20 +359,35 @@ class GameServer:
 
     def main_loop(self):
         while True:
+            start_time = time.time()
             while not self.input_queue.empty():
                 player, msg = self.input_queue.get()
                 self.process_input(player, msg)
 
             self.session.update(1 / 60) #60fps might change later TODO: put in constants
-
             self.broadcast_state()
+
+
+            sleep_time = 1/60 - (time.time() - start_time)
+            if (sleep_time > 0):
+                time.sleep(sleep_time)
 
     def process_input(self, player, msg):
         action = msg.get("action")
         if action == "attack":
             self.session.handleAttack(player, msg.get("type"))
+
         elif action == "move":
-            pass
+            direction = msg.get("direction")
+            move_speed = constants.walking_speed if not msg.get("run") else constants.running_speed
+            if direction == "left":
+                player.velX = -move_speed
+                player.facingRight = False
+            elif direction == "right":
+                player.velX = move_speed
+                player.facingRight = True
+            elif direction == "none":
+                player.velX = 0
 
 if __name__ == "__main__":
     server = GameServer("0.0.0.0", 3141)
