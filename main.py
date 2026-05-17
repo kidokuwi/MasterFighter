@@ -70,6 +70,8 @@ class Player:
         self.velY = 0
         self.isOnGround = False
 
+        self.has_doubleJamped = False
+
         self.facingRight = False
         self.stunTimer = 0
         self.invinciblityTimer = 0
@@ -161,6 +163,7 @@ class GameSession:
                 for platform in self.sessionMap.platforms:
                     if player.hitBox.checkCollision(platform.hitBox):
                         player.isOnGround = True
+                        player.has_doubleJamped = False
                         player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
 
@@ -388,6 +391,19 @@ class GameServer:
                 player.facingRight = True
             elif direction == "none":
                 player.velX = 0
+        elif action == "jump":
+            if (not player.isOnGround and not player.has_doubleJamped):
+                player.velY -= 2 #TODO:CONSTANTS
+                player.has_doubleJamped = True
+                print("doublejamped")
+            elif (player.isOnGround):
+                player.velY -= 3
+                print("jumped")
+
+
+
+
+
 
 if __name__ == "__main__":
     server = GameServer("0.0.0.0", 3141)

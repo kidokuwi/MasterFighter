@@ -115,7 +115,9 @@ def main():
             if event.type == pygame.KEYDOWN:
                 action = None
                 if event.key == pygame.K_SPACE:
-                    action = {"action": "attack", "type": "natural"}
+                    action = {"action": "jump"}
+                if event.key == pygame.MOUSEBUTTONDOWN:
+                    action = {"action": "attack", "type" : "natural"}
 
                 if action:
                     encrypted_action = session.encrypt(json.dumps(action).encode())
