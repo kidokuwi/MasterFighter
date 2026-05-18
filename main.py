@@ -26,15 +26,16 @@ class Pose:
         self.x = x
         self.y = y
 class Attack:
-    def __init__(self, dmg, rangeX, rangeY, offsetX, offsetY, atkSpeed, stun, knockbackMult):
+    def __init__(self, dmg, rangeX, rangeY, offsetX, offsetY, attack_uptime, stun, knockbackMult, attacker_stun):
         self.dmg = dmg
         self.rangeX = rangeX
         self.rangeY = rangeY
         self.offsetX = offsetX
         self.offsetY = offsetY
-        self.atkSpeed = atkSpeed
+        self.attack_uptime = attack_uptime
         self.stun = stun
         self.knockbackMult = knockbackMult
+        self.attacker_stun = attacker_stun
 
 class Weapon:
     def __init__(self, name, moves):
@@ -86,6 +87,7 @@ class Player:
         return self.invinciblityTimer > 0
     def isOnAttackCooldown(self):
         return self.attkCooldown > 0
+
 
     def updateStatuses(self, timePassed):
         self.stunTimer = max(0, self.stunTimer - timePassed)
@@ -154,6 +156,7 @@ class GameSession:
         self.objects = objects
         self.players = players # player:sock
         self.sessionMap = sessionMap
+        self.active_attks = []#lst of {hitbox, time}
 
     def update(self, timePassed):
         for player in self.players.keys():
@@ -166,32 +169,48 @@ class GameSession:
                         player.has_doubleJamped = False
                         player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
+        active_attacks = self.active_attks
+        for attack in active_attacks:
+            attack['timer'] -= timePassed
+            atk_pose = Pose(attack['x'], attack['y'])
+            atk_hitbox = HitBox(atk_pose, attack['w'], attack['h'])
+
+            for player in self.players.keys():
+                if player != attack['attacker'] and not player.isInvincible():
+                    if atk_hitbox.checkCollision(player.hitBox):
+                        player.hp += attack['dmg']
+                        direction = 1 if attack['attacker'].facingRight else -1
+                        player.velX += player.hp * constants.defaultKnockbackMult * direction
+                        player.stunTimer = attack['stun']
+
+                        player.invinciblityTimer = 0.2#TODO:CONSTANTS
+                        print(f"hit {player.user.username} during uptime")
+
+            if attack['timer'] <= 0:
+                self.active_attks.remove(attack)
 
 
     def handleAttack(self, attacker, attackType):
         if attacker.isStunned() or attacker.isOnAttackCooldown(): return
 
         move = attacker.weapon.moves.get(attackType)
-        direction = 1 if (attacker.facingRight) else -1
-        attackX = attacker.currentPose.x + (move.offsetX*direction)
+        direction = 1 if attacker.facingRight else -1
+        attackX = attacker.currentPose.x + (move.offsetX * direction)
         attackY = attacker.currentPose.y + (move.offsetY)
-        attackPose = Pose(attackX, attackY)
-        attackHitbox = HitBox(attackPose, move.rangeX, move.rangeY)
 
-        attacker.attkCooldown = move.atkSpeed
+        attacker.attkCooldown = move.attack_uptime + 0.1#TODO:CONSTANTS
+        attacker.stunTimer = move.attacker_stun
 
-        for player in self.players:
-            if player != attacker and not player.isInvincible():
-                if attackHitbox.checkCollision(player.hitBox):
-
-                    player.hp += move.dmg
-                    print(f"hit {player.user.username}")
-                    player.velX += player.hp*constants.defaultKnockbackMult*direction
-                    player.stunTimer = move.stun
-                    if attackType == "up":
-                        player.velY += player.hp*constants.defaultKnockbackMult*direction
-                    elif attackType == "down":
-                        player.velY -= player.hp*constants.defaultKnockbackMult*direction
+        self.active_attks.append({
+            "attacker": attacker,
+            "x": attackX,
+            "y": attackY,
+            "w": move.rangeX,
+            "h": move.rangeY,
+            "timer": move.attack_uptime,
+            "dmg": move.dmg,
+            "stun": move.stun
+        })
 
 
 def send_msg(sock, data):
@@ -303,11 +322,11 @@ class GameServer:
                 return
 
             no_weapon = Weapon("none", {"right" : Attack(10,50,50,10,0,
-                                                         10,1,2),
+                                                         1,1,2, 0.5),
                                         "left" : Attack(10,50,50,10,0,
-                                                         10,1,2),
+                                                         10,1,2, 0.5),
                                         "natural" : Attack(10,50,50,10,0,
-                                                         10,1,2)})
+                                                         1,1,2, 0.5)})
             db_user = self.user_manager.users[username]
             user_obj = User(username, db_user["password"], db_user["wins"], db_user["loses"])
             player = Player(user_obj, Pose(300, 400), no_weapon)
@@ -334,7 +353,8 @@ class GameServer:
 
     def broadcast_state(self):
         game_state = {"players" : [],
-                      "platforms": []}
+                      "platforms": [],
+                      "attacks": []}
         players = self.clients.keys()
         for player in players:
             game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
@@ -343,12 +363,12 @@ class GameServer:
                                           "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown()})
         if self.session.sessionMap:
             for plat in self.session.sessionMap.platforms:
-                game_state["platforms"].append({
-                    "x": plat.hitBox.pose.x,
-                    "y": plat.hitBox.pose.y,
-                    "w": plat.hitBox.width,
-                    "h": plat.hitBox.height
-                })
+                game_state["platforms"].append({"x": plat.hitBox.pose.x,"y": plat.hitBox.pose.y,"w": plat.hitBox.width,"h": plat.hitBox.height})
+        for atk in self.session.active_attks:
+            game_state["attacks"].append({
+                "x": atk["x"], "y": atk["y"],
+                "w": atk["w"], "h": atk["h"]
+            })
 
         json_state = json.dumps(game_state).encode()
         for player in players:
@@ -376,6 +396,10 @@ class GameServer:
                 time.sleep(sleep_time)
 
     def process_input(self, player, msg):
+
+        if player.isStunned():
+            return
+
         action = msg.get("action")
         if action == "attack":
             self.session.handleAttack(player, msg.get("type"))
@@ -393,7 +417,7 @@ class GameServer:
                 player.velX = 0
         elif action == "jump":
             if (not player.isOnGround and not player.has_doubleJamped):
-                player.velY -= 2 #TODO:CONSTANTS
+                player.velY -= 2.5 #TODO:CONSTANTS
                 player.has_doubleJamped = True
                 print("doublejamped")
             elif (player.isOnGround):

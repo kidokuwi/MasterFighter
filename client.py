@@ -81,6 +81,10 @@ def main():
             rect_y = plat["y"] - (plat["h"] / 2)
             pygame.draw.rect(screen, (100, 100, 100), (rect_x, rect_y, plat["w"], plat["h"]))
 
+        for atk in current_game_state.get("attacks", []):
+            rect_x = atk["x"] - (atk["w"] / 2)
+            rect_y = atk["y"] - (atk["h"] / 2)
+            pygame.draw.rect(screen, (255, 255, 0), (rect_x, rect_y, atk["w"], atk["h"]), 2)
 
         for p in current_game_state["players"]:
             try:
@@ -116,10 +120,12 @@ def main():
                 action = None
                 if event.key == pygame.K_SPACE:
                     action = {"action": "jump"}
-                if event.key == pygame.MOUSEBUTTONDOWN:
-                    action = {"action": "attack", "type" : "natural"}
-
                 if action:
+                    encrypted_action = session.encrypt(json.dumps(action).encode())
+                    send_msg(sock, encrypted_action)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    action = {"action": "attack", "type": "natural"}
                     encrypted_action = session.encrypt(json.dumps(action).encode())
                     send_msg(sock, encrypted_action)
 
