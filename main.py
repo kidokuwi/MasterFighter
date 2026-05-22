@@ -195,7 +195,7 @@ class GameSession:
 
         move = attacker.weapon.moves.get(attackType)
         direction = 1 if attacker.facingRight else -1
-        attackX = attacker.currentPose.x + (move.offsetX * direction)
+        attackX = attacker.currentPose.x+(attacker.hitBox.width / 2) + (((attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction)
         attackY = attacker.currentPose.y + (move.offsetY)
 
         attacker.attkCooldown = move.attack_uptime + 0.1#TODO:CONSTANTS
@@ -417,11 +417,11 @@ class GameServer:
                 player.velX = 0
         elif action == "jump":
             if (not player.isOnGround and not player.has_doubleJamped):
-                player.velY -= 2.5 #TODO:CONSTANTS
+                player.velY = -5 #TODO:CONSTANTS
                 player.has_doubleJamped = True
                 print("doublejamped")
             elif (player.isOnGround):
-                player.velY -= 3
+                player.velY -= 6
                 print("jumped")
 
 

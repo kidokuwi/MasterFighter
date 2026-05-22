@@ -84,7 +84,7 @@ def main():
         for atk in current_game_state.get("attacks", []):
             rect_x = atk["x"] - (atk["w"] / 2)
             rect_y = atk["y"] - (atk["h"] / 2)
-            pygame.draw.rect(screen, (255, 255, 0), (rect_x, rect_y, atk["w"], atk["h"]), 2)
+            pygame.draw.rect(screen, (255, 255, 0), (rect_x, rect_y, atk["w"], atk["h"]))
 
         for p in current_game_state["players"]:
             try:
