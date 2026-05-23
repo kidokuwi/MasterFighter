@@ -52,7 +52,7 @@ class HitBox:
     def checkCollision(self, other):
         distanceX = abs(other.pose.x - self.pose.x)
         distanceY = abs(other.pose.y - self.pose.y)
-        return (distanceX < (self.width/2 + other.width/2)) and (distanceY < (self.height/2 + other.height/2))
+        return (distanceX <= (self.width/2 + other.width/2)) and (distanceY <= (self.height/2 + other.height/2))
 class User:
     def __init__(self, username, password, wins, loses):
         self.username = username
@@ -79,7 +79,7 @@ class Player:
         self.attkCooldown = 0
 
         self.current_movement = "none"
-        self.isRunning = False
+        self.is_running = False
 
         self.jump_cooldown = 0
 
@@ -188,6 +188,10 @@ class GameSession:
         active_attacks = self.active_attks
         for attack in active_attacks:
             attack['timer'] -= timePassed
+            attacker = attack["attacker"]
+            attack["x"] = attacker.currentPose.x + (attacker.hitBox.width / 2) + ((attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])
+            attack['y'] = attacker.currentPose.y + attack['offsetY']
+
             atk_pose = Pose(attack['x'], attack['y'])
             atk_hitbox = HitBox(atk_pose, attack['w'], attack['h'])
 
@@ -210,12 +214,20 @@ class GameSession:
     def handleAttack(self, attacker, attackType):
         if attacker.isStunned() or attacker.isOnAttackCooldown(): return
 
-        move = attacker.weapon.moves.get(attackType)
+        real_type = attackType
+        if not attacker.isOnGround:
+            real_type = f"{attackType}_air"
+
+        move = attacker.weapon.moves.get(real_type)
+        if not move:
+            return
+
         direction = 1 if attacker.facingRight else -1
-        attackX = attacker.currentPose.x+(attacker.hitBox.width / 2) + (((attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction)
+        attackX = attacker.currentPose.x + (attacker.hitBox.width / 2) + (
+                    ((attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction)
         attackY = attacker.currentPose.y + (move.offsetY)
 
-        attacker.attkCooldown = move.attack_uptime + 0.1#TODO:CONSTANTS
+        attacker.attkCooldown = move.attack_uptime + 0.1
         attacker.stunTimer = move.attacker_stun
 
         self.active_attks.append({
@@ -224,6 +236,8 @@ class GameSession:
             "y": attackY,
             "w": move.rangeX,
             "h": move.rangeY,
+            "offsetX": move.offsetX,
+            "offsetY": move.offsetY,
             "timer": move.attack_uptime,
             "dmg": move.dmg,
             "stun": move.stun
@@ -343,12 +357,11 @@ class GameServer:
                     client_socket.close()
                     return
 
-            no_weapon = Weapon("none", {"right" : Attack(10,50,50,10,0,
-                                                         1,1,2, 0.5),
-                                        "left" : Attack(10,50,50,10,0,
-                                                         10,1,2, 0.5),
-                                        "natural" : Attack(10,50,50,10,0,
-                                                         1,1,2, 0.5)})
+            moves = {}
+            for move_name, move_stats in constants.MOVES.items():
+                moves[move_name] = Attack(*move_stats)# * is cool way to put tuple into args
+
+            no_weapon = Weapon("none", moves)
             db_user = self.user_manager.users[username]
             user_obj = User(username, db_user["password"], db_user["wins"], db_user["loses"])
             player = Player(user_obj, Pose(300, 400), no_weapon)

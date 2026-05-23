@@ -171,8 +171,16 @@ def main():
                     encrypted_action = session.encrypt(json.dumps(action).encode())
                     send_msg(sock, encrypted_action)
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    action = {"action": "attack", "type": "natural"}
+                if event.button == 1: #left click
+                    atk_type = "natural"
+                    if keys[pygame.K_w]:
+                        atk_type = "up"
+                    elif keys[pygame.K_s]:
+                        atk_type = "down"
+                    elif keys[pygame.K_a] or keys[pygame.K_d]:
+                        atk_type = "side"
+
+                    action = {"action": "attack", "type": atk_type}
                     encrypted_action = session.encrypt(json.dumps(action).encode())
                     send_msg(sock, encrypted_action)
 
