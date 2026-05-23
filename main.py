@@ -71,12 +71,17 @@ class Player:
         self.velY = 0
         self.isOnGround = False
 
-        self.has_doubleJamped = False
+        self.jumps_remain = 0
 
         self.facingRight = False
         self.stunTimer = 0
         self.invinciblityTimer = 0
         self.attkCooldown = 0
+
+        self.current_movement = "none"
+        self.isRunning = False
+
+        self.jump_cooldown = 0
 
     def isFacingRight(self):
         return 1 if self.facingRight else 0
@@ -93,14 +98,24 @@ class Player:
         self.stunTimer = max(0, self.stunTimer - timePassed)
         self.invinciblityTimer = max(0, self.invinciblityTimer - timePassed)
         self.attkCooldown = max(0, self.attkCooldown - timePassed)
+        self.jump_cooldown = max(0, self.jump_cooldown - timePassed)
 
     def updatePose(self, timePassed):
-        self.updateStatuses(timePassed)
+        if self.current_movement != "none" and not self.isStunned():
+            move_speed = constants.running_speed if self.is_running else constants.walking_speed
+            if self.current_movement == "left":
+                self.velX = -move_speed
+                self.facingRight = False
+            elif self.current_movement == "right":
+                self.velX = move_speed
+                self.facingRight = True
+
         if not self.isOnGround:
             self.velY += constants.gravity
         else:
             self.velX *= constants.frictionMult
         self.velX *= constants.frictionMult
+
         self.currentPose.x += self.velX
         self.currentPose.y += self.velY
 
@@ -161,12 +176,13 @@ class GameSession:
     def update(self, timePassed):
         for player in self.players.keys():
             player.updatePose(timePassed)
+            player.updateStatuses(timePassed)
             player.isOnGround = False
             if self.sessionMap:
                 for platform in self.sessionMap.platforms:
-                    if player.hitBox.checkCollision(platform.hitBox):
+                    if player.hitBox.checkCollision(platform.hitBox) and player.velY >= 0:
                         player.isOnGround = True
-                        player.has_doubleJamped = False
+                        player.jumps_remain = 2
                         player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
         active_attacks = self.active_attks
@@ -180,7 +196,8 @@ class GameSession:
                     if atk_hitbox.checkCollision(player.hitBox):
                         player.hp += attack['dmg']
                         direction = 1 if attack['attacker'].facingRight else -1
-                        player.velX += player.hp * constants.defaultKnockbackMult * direction
+                        player.velX += (player.hp**2) * constants.defaultKnockbackMult * direction
+                        player.velY -= constants.defaultKnockbackMult
                         player.stunTimer = attack['stun']
 
                         player.invinciblityTimer = 0.2#TODO:CONSTANTS
@@ -296,30 +313,35 @@ class GameServer:
 
     def handle_client(self, client_socket):
         player = None
+        num_of_failed = 0
         try:
             session = self.handshake(client_socket)
+            logged_in = False
+            while(not logged_in):
+                auth_data = recv_msg(client_socket)
+                if not auth_data: return
 
-            auth_data = recv_msg(client_socket)
-            if not auth_data: return
+                auth_json = json.loads(session.decrypt(auth_data).decode())
+                action = auth_json.get("action")  # should be login/register
+                username = auth_json.get("username")
+                password = auth_json.get("password")
 
-            auth_json = json.loads(session.decrypt(auth_data).decode())
-            action = auth_json.get("action")  # should be login/register
-            username = auth_json.get("username")
-            password = auth_json.get("password")
+                if action == "register":
+                    success = self.user_manager.register(username, password)
+                    msg = "Register successful" if success else "Invalid registeration"
+                else:  # login
+                    success = self.user_manager.login(username, password)
+                    msg = "Login successful" if success else "Invalid username or password"
 
-            if action == "register":
-                success = self.user_manager.register(username, password)
-                msg = "Register successful" if success else "Invalid registeration"
-            else:  # login
-                success = self.user_manager.login(username, password)
-                msg = "Login successful" if success else "Invalid username or password"
-
-            response = json.dumps({"success": success, "message": msg}).encode()
-            send_msg(client_socket, session.encrypt(response))
-
-            if not success:
-                client_socket.close()
-                return
+                response = json.dumps({"success": success, "message": msg}).encode()
+                send_msg(client_socket, session.encrypt(response))
+                logged_in = success
+                if not success:
+                    num_of_failed += 1
+                    print(f"Login/reg failed from: {client_socket}")
+                if(num_of_failed > 10): # too much, TODO:CONSTANTS
+                    client_socket.close()
+                    return
 
             no_weapon = Weapon("none", {"right" : Attack(10,50,50,10,0,
                                                          1,1,2, 0.5),
@@ -405,24 +427,32 @@ class GameServer:
             self.session.handleAttack(player, msg.get("type"))
 
         elif action == "move":
-            direction = msg.get("direction")
-            move_speed = constants.walking_speed if not msg.get("run") else constants.running_speed
-            if direction == "left":
-                player.velX = -move_speed
-                player.facingRight = False
-            elif direction == "right":
-                player.velX = move_speed
-                player.facingRight = True
-            elif direction == "none":
+            player.current_movement = msg.get("direction")
+            player.is_running = msg.get("run")
+            if player.current_movement == "none":
                 player.velX = 0
+
+
         elif action == "jump":
-            if (not player.isOnGround and not player.has_doubleJamped):
-                player.velY = -5 #TODO:CONSTANTS
+            if player.jump_cooldown > 0:
+                return
+
+            if player.isOnGround:
+                player.velY = -9
+                player.isOnGround = False
+                player.can_double_jump = True
+                player.has_doubleJamped = False
+                player.jump_cooldown = 0.1
+                player.jumps_remain = 1
+                print("jump")
+
+            elif player.jumps_remain > 0:
+                player.velY = -9
                 player.has_doubleJamped = True
-                print("doublejamped")
-            elif (player.isOnGround):
-                player.velY -= 6
-                print("jumped")
+                player.can_double_jump = False
+                player.jump_cooldown = 0.1
+                player.jumps_remain -= 1
+                print("doublejump")
 
 
 

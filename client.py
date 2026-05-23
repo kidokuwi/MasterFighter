@@ -49,31 +49,77 @@ def connect_to_server(host, port):
 def main():
     sock, session = connect_to_server("127.0.0.1", 3141)
 
-    username = input("Username: ")
-    password = input("Password: ")
-    auth_msg = json.dumps({
-        "action": "login",
-        "username": username,
-        "password": password
-    }).encode()
-
-    send_msg(sock, session.encrypt(auth_msg))
-
-    response = json.loads(session.decrypt(recv_msg(sock)).decode())
-
-    if not response["success"]:
-        print(f"{response['message']}")
-        return
-
-    print("login")
-    threading.Thread(target=receiver_thread, args=(sock, session), daemon=True).start()
-
-
     pygame.init()
     screen = pygame.display.set_mode((1920, 1080))
     clock = pygame.time.Clock()
 
+    font = pygame.font.SysFont(None, 36)
+    username_text = ""
+    password_text = ""
+    active_field = "username"
+    error_message = ""
+    logged_in = False
+
+    while not logged_in:
+        screen.fill((15, 15, 20))
+
+        title_img = font.render("Login", True, (255, 255, 255))
+        user_label = font.render(f"Username: {username_text}", True,
+                                 (255, 255, 0) if active_field == "username" else (255, 255, 255))
+        pass_label = font.render(f"Password: {'*' * len(password_text)}", True,
+                                 (255, 255, 0) if active_field == "password" else (255, 255, 255))
+        err_label = font.render(error_message, True, (255, 100, 100))
+
+        screen.blit(title_img, (100, 50))
+        screen.blit(user_label, (100, 150))
+        screen.blit(pass_label, (100, 200))
+        screen.blit(err_label, (100, 300))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_TAB:
+                    active_field = "password" if active_field == "username" else "username"
+
+                elif event.key == pygame.K_RETURN:
+                    auth_msg = json.dumps(
+                        {"action": "login", "username": username_text, "password": password_text}).encode()
+                    send_msg(sock, session.encrypt(auth_msg))
+
+                    raw_res = recv_msg(sock)
+                    if raw_res:
+                        response = json.loads(session.decrypt(raw_res).decode())
+                        if response["success"]:
+                            logged_in = True
+                        else:
+                            error_message = response["message"]
+
+                elif event.key == pygame.K_BACKSPACE:
+                    if active_field == "username":
+                        username_text = username_text[:-1]
+                    else:
+                        password_text = password_text[:-1]
+
+                else:
+                    if active_field == "username":
+                        username_text += event.unicode
+                    else:
+                        password_text += event.unicode
+
+        pygame.display.flip()
+
+
+    print("login")
+    font = pygame.font.SysFont(None, 24)
+
+    threading.Thread(target=receiver_thread, args=(sock, session), daemon=True).start()
+
     running = True
+
+    last_move = None
     while running:
         screen.fill((30, 30, 30))
         for plat in current_game_state.get("platforms", []):
@@ -90,7 +136,6 @@ def main():
             try:
                 x, y = int(p["x"]), int(p["y"])
                 pygame.draw.rect(screen, (255, 0, 0), (x, y, 50, 50))
-                font = pygame.font.SysFont(None, 24)
                 img = font.render(p["username"], True, (255, 255, 255))
                 screen.blit(img, (x, y - 20))
             except Exception as e:
@@ -110,7 +155,9 @@ def main():
         else:
             move_action = {"action": "move", "direction": "none" , "run": player_running}
 
-        send_msg(sock, session.encrypt(json.dumps(move_action).encode()))
+
+        if move_action != last_move:
+            send_msg(sock, session.encrypt(json.dumps(move_action).encode()))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
