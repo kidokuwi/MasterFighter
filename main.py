@@ -189,7 +189,8 @@ class GameSession:
         for attack in active_attacks:
             attack['timer'] -= timePassed
             attacker = attack["attacker"]
-            attack["x"] = attacker.currentPose.x + (attacker.hitBox.width / 2) + ((attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])
+            direction = 1 if attacker.facingRight else -1
+            attack["x"] = attacker.currentPose.x + (attacker.hitBox.width / 2) + ((attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])*direction
             attack['y'] = attacker.currentPose.y + attack['offsetY']
 
             atk_pose = Pose(attack['x'], attack['y'])
