@@ -83,6 +83,9 @@ class Player:
 
         self.jump_cooldown = 0
 
+        self.isDead = False
+        self.lives = 3#TODO:CONSTANTS
+
     def isFacingRight(self):
         return 1 if self.facingRight else 0
 
@@ -172,8 +175,12 @@ class GameSession:
         self.players = players # player:sock
         self.sessionMap = sessionMap
         self.active_attks = []#lst of {hitbox, time}
+        self.winner = None
 
     def update(self, timePassed):
+        if self.winner:
+            return
+
         for player in self.players.keys():
             player.updatePose(timePassed)
             player.updateStatuses(timePassed)
@@ -185,12 +192,38 @@ class GameSession:
                         player.jumps_remain = 2
                         player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
+            if player.currentPose.y > 1100 or player.currentPose.x < -200 or player.currentPose.x > 2100 or player.currentPose.y < -300:
+                if not player.isDead:
+                    player.lives -= 1
+                    player.hp = 0
+                    if player.lives <= 0:
+                        player.isDead = True
+                        player.currentPose.x = -9999# send player out of scene
+                        player.currentPose.y = -9999
+                        player.velX = 0
+                        player.velY = 0
+                    else:
+                        player.currentPose.x = 400#TODO:CONSTANTS
+                        player.currentPose.y = 300
+                        player.velX = 0
+                        player.velY = 0
+                        player.current_movement = "none"
+                        player.is_running = False
+                        player.stunTimer = 0
+                        player.invinciblityTimer = 2.0 #TODO:CONSTANTS
+
+                if len(self.players) > 1:
+                    players_alive = [p for p in self.players.keys() if not p.isDead]
+                    if len(players_alive) == 1:
+                        self.winner = players_alive[0].user
+                    elif len(players_alive) == 0:
+                        self.winner = "tie"
         active_attacks = self.active_attks
         for attack in active_attacks:
             attack['timer'] -= timePassed
             attacker = attack["attacker"]
             direction = 1 if attacker.facingRight else -1
-            attack["x"] = attacker.currentPose.x + (attacker.hitBox.width / 2) + ((attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])*direction
+            attack["x"] = attacker.currentPose.x + ((attacker.hitBox.width / 2) + (attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])*direction
             attack['y'] = attacker.currentPose.y + attack['offsetY']
 
             atk_pose = Pose(attack['x'], attack['y'])
@@ -224,8 +257,8 @@ class GameSession:
             return
 
         direction = 1 if attacker.facingRight else -1
-        attackX = attacker.currentPose.x + (attacker.hitBox.width / 2) + (
-                    ((attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction)
+        attackX = attacker.currentPose.x + ((attacker.hitBox.width / 2) +
+                    (attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction
         attackY = attacker.currentPose.y + (move.offsetY)
 
         attacker.attkCooldown = move.attack_uptime + 0.1
@@ -287,7 +320,14 @@ class GameServer:
 
         self.input_queue = queue.Queue()
         self.clients = {} #Player:socket
-        self.session = GameSession([], self.clients, SessionMap([Platform(Pose(400,500), 800, 100)], "unnammed"))
+        self.session = GameSession([], self.clients, SessionMap([Platform(Pose(400,500), 800, 100),
+                                                                 Platform(Pose(200,300), 150, 50),
+                                                                 Platform(Pose(600,300), 150, 50),
+
+                                                                 Platform(Pose(1500, 500), 800, 100),
+                                                                 Platform(Pose(1300, 300), 150, 50),
+                                                                 Platform(Pose(1700, 300), 150, 50)
+                                                                 ], "unnammed"))
         self.user_manager = UserManager("users.json")
 
         self.private_key, self.public_key_bytes = self.get_keys()
@@ -388,15 +428,24 @@ class GameServer:
             client_socket.close()
 
     def broadcast_state(self):
+        winner = None
+        if self.session.winner:
+            if isinstance(self.session.winner, str):
+                winner = self.session.winner  # tie
+            else:
+                winner = self.session.winner.username  # user
+
         game_state = {"players" : [],
                       "platforms": [],
-                      "attacks": []}
+                      "attacks": [],
+                      "winner": winner}
         players = self.clients.keys()
         for player in players:
             game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
                                           "hp": player.hp, "facingRight" : player.facingRight
                                         , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
-                                          "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown()})
+                                          "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown(),
+                                          "lives": player.lives,"isDead": player.isDead})
         if self.session.sessionMap:
             for plat in self.session.sessionMap.platforms:
                 game_state["platforms"].append({"x": plat.hitBox.pose.x,"y": plat.hitBox.pose.y,"w": plat.hitBox.width,"h": plat.hitBox.height})
@@ -417,13 +466,34 @@ class GameServer:
 
 
     def main_loop(self):
+        db_updated = False
         while True:
             start_time = time.time()
             while not self.input_queue.empty():
                 player, msg = self.input_queue.get()
+                if msg.get("action") == "restart" and self.session.winner:
+                    self.session.winner = None
+                    db_updated = False
+                    for p in self.clients.keys():
+                        p.lives = 3#TODO:CONSTANTS
+                        p.isDead = False
+                        p.hp = 0
+                        p.currentPose = Pose(400, 400)#TODO:CONSTANTS
+                        p.velX = 0
+                        p.velY = 0
+                    continue
                 self.process_input(player, msg)
 
             self.session.update(1 / 60) #60fps might change later TODO: put in constants
+            if self.session.winner and not db_updated:
+                if self.session.winner != "tie":
+                    winner = self.session.winner
+                    self.user_manager.users[winner.username]["wins"] += 1
+                    for p in self.clients.keys():
+                        if (p != winner):
+                            self.user_manager.users[p.user.username]["loses"] += 1
+                    self.user_manager.save_db()
+                db_updated = True
             self.broadcast_state()
 
 

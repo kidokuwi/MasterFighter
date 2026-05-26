@@ -2,6 +2,7 @@ __author__ = "Ido Keysar"
 
 import threading
 
+import constants
 from main import send_msg, recv_msg, SecureSession
 import socket
 import json
@@ -60,20 +61,25 @@ def main():
     error_message = ""
     logged_in = False
 
+    mode = "login"
+
     while not logged_in:
         screen.fill((15, 15, 20))
 
-        title_img = font.render("Login", True, (255, 255, 255))
+        title_img = font.render("Login" if mode == "login" else "Register", True, (255, 255, 255))
         user_label = font.render(f"Username: {username_text}", True,
                                  (255, 255, 0) if active_field == "username" else (255, 255, 255))
         pass_label = font.render(f"Password: {'*' * len(password_text)}", True,
                                  (255, 255, 0) if active_field == "password" else (255, 255, 255))
         err_label = font.render(error_message, True, (255, 100, 100))
+        #
+        switch_lable = font.render("F1 to switch to REGISTER" if mode == "login" else "F1 to switch to LOGIN", True, (0, 200, 255))
 
         screen.blit(title_img, (100, 50))
         screen.blit(user_label, (100, 150))
         screen.blit(pass_label, (100, 200))
-        screen.blit(err_label, (100, 300))
+        screen.blit(switch_lable, (100, 250))
+        screen.blit(err_label, (100, 320))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -83,10 +89,12 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_TAB:
                     active_field = "password" if active_field == "username" else "username"
-
+                elif event.key == pygame.K_F1:
+                    mode = "register" if mode == "login" else "login"
+                    error_message = ""
                 elif event.key == pygame.K_RETURN:
                     auth_msg = json.dumps(
-                        {"action": "login", "username": username_text, "password": password_text}).encode()
+                        {"action": mode, "username": username_text, "password": password_text}).encode()
                     send_msg(sock, session.encrypt(auth_msg))
 
                     raw_res = recv_msg(sock)
@@ -135,7 +143,10 @@ def main():
         for p in current_game_state["players"]:
             try:
                 x, y = int(p["x"]), int(p["y"])
-                pygame.draw.rect(screen, (255, 0, 0), (x, y, 50, 50))
+                img = font.render(f"{p['username']}  Damage: {p['hp']}%  lives: {p['lives']}", True, (255, 255, 255))
+                screen.blit(img, (x - 20, y - 20))
+                pygame.draw.rect(screen, (255, 0, 0), (x - (constants.defaultUserWidth/2), y - (constants.defaultUserHeight/2),
+                                                       constants.defaultUserWidth, constants.defaultUserHeight ))
                 img = font.render(p["username"], True, (255, 255, 255))
                 screen.blit(img, (x, y - 20))
             except Exception as e:
