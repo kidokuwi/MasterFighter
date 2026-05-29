@@ -3,7 +3,7 @@ __author__ = "Ido Keysar"
 import threading
 
 import constants
-from main import send_msg, recv_msg, SecureSession
+from main import send_msg, recv_msg, SecureSession, Pose
 import socket
 import json
 import os
@@ -62,6 +62,10 @@ def main():
     logged_in = False
 
     mode = "login"
+    animation_page_path = "animations_falcon.png"
+    animations = {}
+    for anim_name in constants.FALCON_ANIMATIONS.keys(): #might take time need check
+        animations[anim_name] = constants.get_animation(animation_page_path, constants.FALCON_ANIMATIONS, anim_name, scale=2)
 
     while not logged_in:
         screen.fill((15, 15, 20))
@@ -140,15 +144,29 @@ def main():
             rect_y = atk["y"] - (atk["h"] / 2)
             pygame.draw.rect(screen, (255, 255, 0), (rect_x, rect_y, atk["w"], atk["h"]))
 
+        dmg_lives_pos = Pose(50,750)
         for p in current_game_state["players"]:
             try:
                 x, y = int(p["x"]), int(p["y"])
-                img = font.render(f"{p['username']}  Damage: {p['hp']}%  lives: {p['lives']}", True, (255, 255, 255))
-                screen.blit(img, (x - 20, y - 20))
-                pygame.draw.rect(screen, (255, 0, 0), (x - (constants.defaultUserWidth/2), y - (constants.defaultUserHeight/2),
-                                                       constants.defaultUserWidth, constants.defaultUserHeight ))
+                font = pygame.font.SysFont(None, 32)
+                img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, (255, 255, 255))
+                screen.blit(img, (dmg_lives_pos.x, dmg_lives_pos.y))
+                dmg_lives_pos.x += 300
+
+
+                anim_frames = animations.get(p.get("state"), animations["stand"]) #if no spesific state animation then default to stand
+                frame_idx = (pygame.time.get_ticks() // 120) % len(anim_frames) #TODO:CONSTANTS
+                current_frame = anim_frames[frame_idx]
+
+                if not p.get("facingRight"):
+                    current_frame = pygame.transform.flip(current_frame, True, False)
+
+                img_rect = current_frame.get_rect(center=(x, y))
+                screen.blit(current_frame, img_rect)
+
+                font = pygame.font.SysFont(None, 24)
                 img = font.render(p["username"], True, (255, 255, 255))
-                screen.blit(img, (x, y - 20))
+                screen.blit(img, (x, y-30))
             except Exception as e:
                 print(e)
 

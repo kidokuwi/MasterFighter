@@ -96,6 +96,16 @@ class Player:
     def isOnAttackCooldown(self):
         return self.attkCooldown > 0
 
+    def get_state_string(self):
+        if not self.isOnGround:
+            if self.jumps_remain == 1: return "jump"
+            if self.jumps_remain == 0: return "doubleJump"
+
+        if self.current_movement != "none":
+            return "run" if self.is_running else "walk"
+
+        return "stand"
+
 
     def updateStatuses(self, timePassed):
         self.stunTimer = max(0, self.stunTimer - timePassed)
@@ -445,7 +455,7 @@ class GameServer:
                                           "hp": player.hp, "facingRight" : player.facingRight
                                         , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
                                           "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown(),
-                                          "lives": player.lives,"isDead": player.isDead})
+                                          "lives": player.lives,"isDead": player.isDead, "state": player.get_state_string()})
         if self.session.sessionMap:
             for plat in self.session.sessionMap.platforms:
                 game_state["platforms"].append({"x": plat.hitBox.pose.x,"y": plat.hitBox.pose.y,"w": plat.hitBox.width,"h": plat.hitBox.height})
