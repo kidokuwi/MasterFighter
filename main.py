@@ -577,7 +577,7 @@ class GameServer:
                     winner = self.session.winner
                     self.user_manager.users[winner.username]["wins"] += 1
                     for p in self.clients.keys():
-                        if (p != winner):
+                        if (p.user.username != winner.username):
                             self.user_manager.users[p.user.username]["loses"] += 1
                     self.user_manager.save_db()
                 db_updated = True
