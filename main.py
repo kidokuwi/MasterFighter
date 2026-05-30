@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 import os
+import random
 
 PEPPER = "2222222" #TODO:PUT
 PRIVATE_KEY_FILE = "private_key.pem"
@@ -44,6 +45,13 @@ class Weapon:
 
     def addMove(self, moveType, attackObj):
         self.moves[moveType] = attackObj
+
+class DroppedWeapon:
+    def __init__(self, name, pose):
+        self.name = name
+        self.pose = pose
+        self.hitBox = HitBox(self.pose, 30, 30)#TODO:CONSTANTS
+
 class HitBox:
     def __init__(self, pose, width, height):
         self.pose = pose
@@ -207,6 +215,8 @@ class GameSession:
         self.sessionMap = sessionMap
         self.active_attks = []#lst of {hitbox, time}
         self.winner = None
+        self.spawn_timer = 0
+        self.next_spawn_timer = random.randrange(15,30)
 
     def update(self, timePassed):
         if self.winner:
@@ -247,6 +257,7 @@ class GameSession:
                     players_alive = [p for p in self.players.keys() if not p.isDead]
                     if len(players_alive) == 1:
                         self.winner = players_alive[0].user
+                        print(f"{self.winner.username} won")
                     elif len(players_alive) == 0:
                         self.winner = "tie"
         active_attacks = self.active_attks
@@ -277,6 +288,30 @@ class GameSession:
 
             if attack["timer"] <= 0:
                 self.active_attks.remove(attack)
+
+        self.spawn_timer += timePassed
+        if self.spawn_timer >= self.next_spawn_timer:#TODO:CONSTANTS
+            self.next_spawn_timer = random.randrange(15,30)
+            self.spawn_timer = 0
+            if len(self.objects) < 3 and self.sessionMap and self.sessionMap.platforms:
+                platform = random.choice(self.sessionMap.platforms)
+
+                spawn_x = platform.hitBox.pose.x
+                spawn_y = platform.hitBox.pose.y - (platform.hitBox.height / 2) - 25#TODO:CONSTANTS
+
+                self.objects.append(DroppedWeapon("sword", Pose(spawn_x, spawn_y)))
+
+        for item in list(self.objects):
+            for player in self.players.keys():
+                if not player.isDead and player.hitBox.checkCollision(item.hitBox):
+                    moves = {}
+                    weapon = constants.WEAPONS.get(item.name)
+                    if weapon:
+                        for move_name, move_stats in weapon.items():
+                            moves[move_name] = Attack(*move_stats)
+                        player.weapon = Weapon(item.name, moves)
+                        self.objects.remove(item)
+                        break
 
 
     def handleAttack(self, attacker, attackType):
@@ -433,7 +468,7 @@ class GameServer:
                     return
 
             moves = {}
-            for move_name, move_stats in constants.MOVES.items():
+            for move_name, move_stats in constants.WEAPONS["hand"].items():
                 moves[move_name] = Attack(*move_stats)# * is cool way to put tuple into args
 
             no_weapon = Weapon("none", moves)
@@ -472,7 +507,8 @@ class GameServer:
         game_state = {"players" : [],
                       "platforms": [],
                       "attacks": [],
-                      "winner": winner}
+                      "winner": winner,
+                      "objects": []}
         players = self.clients.keys()
         for player in players:
             game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
@@ -488,6 +524,12 @@ class GameServer:
             game_state["attacks"].append({
                 "x": atk["x"], "y": atk["y"],
                 "w": atk["w"], "h": atk["h"]
+            })
+        for item in self.session.objects:
+            game_state["objects"].append({
+                "x": item.pose.x,
+                "y": item.pose.y,
+                "name": item.name
             })
 
         json_state = json.dumps(game_state).encode()
@@ -508,6 +550,8 @@ class GameServer:
                 player, msg = self.input_queue.get()
                 if msg.get("action") == "restart" and self.session.winner:
                     self.session.winner = None
+                    self.session.dropped_weapons = []
+                    self.session.spawn_timer = 0
                     db_updated = False
                     for p in self.clients.keys():
                         p.lives = 3#TODO:CONSTANTS
@@ -516,6 +560,11 @@ class GameServer:
                         p.currentPose = Pose(400, 400)#TODO:CONSTANTS
                         p.velX = 0
                         p.velY = 0
+                        default_moves = {}
+                        for m_name, m_stats in constants.WEAPONS["hand"].items():
+                            default_moves[m_name] = Attack(*m_stats)
+                        p.weapon = Weapon("hand", default_moves)
+                    continue
                     continue
                 self.process_input(player, msg)
 

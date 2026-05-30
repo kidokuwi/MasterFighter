@@ -1,10 +1,10 @@
 import pygame
 
 __author__ = "Ido Keysar"
-
+#.venv\Scripts\activate
 defaultUserWidth = 50
 defaultUserHeight = 80
-defaultKnockbackMult = 0.05
+defaultKnockbackMult = 0.01
 frictionMult = 0.96
 gravity = 0.3
 
@@ -17,26 +17,34 @@ SHIELD_DECAY_RATE = 0.5
 SHIELD_STUN_DURATION = 3.0
 
 # (dmg, rangeX, rangeY, offsetX, offsetY, attack_uptime, stun, knockbackMult, attacker_stun)
-MOVE_NATURAL = (20, 50, 50, 10, 0, 0.4, 1.0, 1.0, 0.5)
-MOVE_SIDE = (12, 60, 40, 15, 0, 0.45, 1.2, 1.2, 0.5)
-MOVE_UP = (11, 40, 70, 5, -20, 0.4, 1.5, 1.5, 0.4)
-MOVE_DOWN = (14, 60, 30, 10, 20, 0.3, 0.5, 1.5, 0.3)
-
-MOVE_NATURAL_AIR = (9, 45, 45, 0, 0, 0.8, 0.8, 1.5, 0.8)
-MOVE_SIDE_AIR = (17, 55, 35, 15, 0, 1.0, 1.1, 2.0, 0.5)
-MOVE_UP_AIR = (12, 40, 60, 5, -20, 1.2, 1.2, 2.2, 0.4)
-MOVE_DOWN_AIR = (15, 80, 30, -55, 40, 1.5, 1.5, 3.0, 0.8)
-
-MOVES = {
-    "natural": MOVE_NATURAL,
-    "side": MOVE_SIDE,
-    "up": MOVE_UP,
-    "down": MOVE_DOWN,
-    "natural_air": MOVE_NATURAL_AIR,
-    "side_air": MOVE_SIDE_AIR,
-    "up_air": MOVE_UP_AIR,
-    "down_air": MOVE_DOWN_AIR
+HAND_MOVES = {
+    "natural": (20, 50, 50, 10, 0, 0.4, 1.0, 1.0, 0.5),
+    "side": (12, 60, 40, 15, 0, 0.45, 1.2, 1.2, 0.5),
+    "up": (11, 40, 70, 5, -20, 0.4, 1.5, 1.5, 0.4),
+    "down": (14, 60, 30, 10, 20, 0.3, 0.5, 1.5, 0.3),
+    "natural_air": (9, 45, 45, 0, 0, 0.8, 0.8, 1.5, 0.8),
+    "side_air": (17, 55, 35, 15, 0, 1.0, 1.1, 2.0, 1.1),
+    "up_air": (12, 40, 60, 5, -20, 0.4, 1.2, 2.2, 0.4),
+    "down_air": (15, 80, 30, -55, 40, 0.8, 1.5, 3.0, 0.8)
 }
+
+
+SWORD_MOVES = {
+    "natural": (15, 85, 30, 25, -5, 0.25, 0.8, 1.1, 0.3),
+    "side": (24, 100, 45, 30, 0, 0.55, 1.5, 1.8, 0.6),
+    "up": (16, 55, 95, 5, -35, 0.35, 1.3, 1.6, 0.4),
+    "down": (18, 90, 35, 15, 35, 0.4, 1.1, 1.3, 0.4),
+    "natural_air": (12, 70, 50, 10, 0, 0.5, 0.9, 1.3, 0.5),
+    "side_air": (20, 85, 40, 20, -5, 0.5, 1.2, 1.9, 0.5),
+    "up_air": (14, 50, 80, 5, -30, 0.4, 1.1, 2.0, 0.4),
+    "down_air": (22, 60, 70, 0, 50, 0.7, 1.6, 2.5, 0.7)
+}
+WEAPONS = {
+    "hand": HAND_MOVES,
+    "sword": SWORD_MOVES
+}
+
+
 
 FALCON_ANIMATIONS = {
     "stand": [

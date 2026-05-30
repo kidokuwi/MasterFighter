@@ -138,6 +138,11 @@ def main():
             rect_y = plat["y"] - (plat["h"] / 2)
             pygame.draw.rect(screen, (100, 100, 100), (rect_x, rect_y, plat["w"], plat["h"]))
 
+        for item in current_game_state.get("objects", []):
+            item_rect = pygame.Rect(0, 0, 30, 30)
+            item_rect.center = (int(item["x"]), int(item["y"]))
+            pygame.draw.rect(screen, (255, 140, 0), item_rect)
+
         for atk in current_game_state.get("attacks", []):
             rect_x = atk["x"] - (atk["w"] / 2)
             rect_y = atk["y"] - (atk["h"] / 2)
@@ -164,7 +169,7 @@ def main():
                 screen.blit(current_frame, img_rect)
 
                 if p.get("is_shielding"):
-                    radius = int(p["shield_hp"]) + 10
+                    radius = int(p["shield_hp"])*0.8 + 10
                     shield_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
                     pygame.draw.circle(shield_surface, (100, 150, 255, 150), (radius, radius), radius)
                     screen.blit(shield_surface, (x - radius, y - radius))
@@ -177,7 +182,7 @@ def main():
 
         keys = pygame.key.get_pressed()
         shielding_action = False
-        if keys[pygame.K_s]:#server handle if in the air
+        if keys[pygame.K_e]:#server handle if in the air
             shielding_action = True
 
         shield_msg = {"action": "shield", "active": shielding_action}
