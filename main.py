@@ -50,7 +50,7 @@ class DroppedWeapon:
     def __init__(self, name, pose):
         self.name = name
         self.pose = pose
-        self.hitBox = HitBox(self.pose, 30, 30)#TODO:CONSTANTS
+        self.hitBox = HitBox(self.pose, constants.DROPPED_WEAPON_WIDTH, constants.DROPPED_WEAPON_HEIGHT)
 
 class HitBox:
     def __init__(self, pose, width, height):
@@ -92,7 +92,7 @@ class Player:
         self.jump_cooldown = 0
 
         self.isDead = False
-        self.lives = 3#TODO:CONSTANTS
+        self.lives = constants.DEFAULT_LIVES
 
         self.shield_hp = constants.MAX_SHIELD_HP
         self.is_shielding = False
@@ -139,7 +139,7 @@ class Player:
                 self.shield_broken = True
         else:
             self.shield_hp = min(constants.MAX_SHIELD_HP, self.shield_hp + constants.SHIELD_REGEN_RATE)
-            if self.shield_hp > 20:
+            if self.shield_hp > constants.SHIELD_BROKEN_RECOVERY_THRESHOLD:
                 self.shield_broken = False
 
     def updatePose(self, timePassed):
@@ -216,7 +216,7 @@ class GameSession:
         self.active_attks = []#lst of {hitbox, time}
         self.winner = None
         self.spawn_timer = 0
-        self.next_spawn_timer = random.randrange(15,30)
+        self.next_spawn_timer = random.randrange(constants.WEAPON_SPAWN_MIN_TIME, constants.WEAPON_SPAWN_MAX_TIME)
 
     def update(self, timePassed):
         if self.winner:
@@ -230,28 +230,28 @@ class GameSession:
                 for platform in self.sessionMap.platforms:
                     if player.hitBox.checkCollision(platform.hitBox) and player.velY >= 0:
                         player.isOnGround = True
-                        player.jumps_remain = 2
+                        player.jumps_remain = constants.DEFAULT_JUMPS
                         player.currentPose.y = platform.hitBox.pose.y - platform.hitBox.height/2 - player.hitBox.height/2 # - = +
                         player.velY = 0
-            if player.currentPose.y > 1100 or player.currentPose.x < -200 or player.currentPose.x > 2100 or player.currentPose.y < -300:
+            if player.currentPose.y > constants.DEATH_BOUNDARY_BOTTOM or player.currentPose.x < constants.DEATH_BOUNDARY_LEFT or player.currentPose.x > constants.DEATH_BOUNDARY_RIGHT or player.currentPose.y < constants.DEATH_BOUNDARY_TOP:
                 if not player.isDead:
                     player.lives -= 1
                     player.hp = 0
                     if player.lives <= 0:
                         player.isDead = True
-                        player.currentPose.x = -9999# send player out of scene
-                        player.currentPose.y = -9999
+                        player.currentPose.x = constants.DEAD_POSITION  # send player out of scene
+                        player.currentPose.y = constants.DEAD_POSITION
                         player.velX = 0
                         player.velY = 0
                     else:
-                        player.currentPose.x = 400#TODO:CONSTANTS
-                        player.currentPose.y = 300
+                        player.currentPose.x = constants.RESPAWN_X
+                        player.currentPose.y = constants.RESPAWN_Y
                         player.velX = 0
                         player.velY = 0
                         player.current_movement = "none"
                         player.is_running = False
                         player.stunTimer = 0
-                        player.invinciblityTimer = 2.0 #TODO:CONSTANTS
+                        player.invinciblityTimer = constants.RESPAWN_INVINCIBILITY
 
                 if len(self.players) > 1:
                     players_alive = [p for p in self.players.keys() if not p.isDead]
@@ -283,21 +283,21 @@ class GameSession:
                             player.velY -= constants.defaultKnockbackMult
                             player.stunTimer = attack["stun"]
 
-                            player.invinciblityTimer = 0.2#TODO:CONSTANTS
+                            player.invinciblityTimer = constants.HIT_INVINCIBILITY
                             print(f"hit {player.user.username} during uptime")
 
             if attack["timer"] <= 0:
                 self.active_attks.remove(attack)
 
         self.spawn_timer += timePassed
-        if self.spawn_timer >= self.next_spawn_timer:#TODO:CONSTANTS
-            self.next_spawn_timer = random.randrange(15,30)
+        if self.spawn_timer >= self.next_spawn_timer:
+            self.next_spawn_timer = random.randrange(constants.WEAPON_SPAWN_MIN_TIME, constants.WEAPON_SPAWN_MAX_TIME)
             self.spawn_timer = 0
-            if len(self.objects) < 3 and self.sessionMap and self.sessionMap.platforms:
+            if len(self.objects) < constants.MAX_DROPPED_WEAPONS and self.sessionMap and self.sessionMap.platforms:
                 platform = random.choice(self.sessionMap.platforms)
 
                 spawn_x = platform.hitBox.pose.x
-                spawn_y = platform.hitBox.pose.y - (platform.hitBox.height / 2) - 25#TODO:CONSTANTS
+                spawn_y = platform.hitBox.pose.y - (platform.hitBox.height / 2) - constants.WEAPON_SPAWN_Y_OFFSET
 
                 self.objects.append(DroppedWeapon("sword", Pose(spawn_x, spawn_y)))
 
@@ -330,7 +330,7 @@ class GameSession:
                     (attacker.hitBox.width / 2) + (move.rangeX / 2) + move.offsetX) * direction
         attackY = attacker.currentPose.y + (move.offsetY)
 
-        attacker.attkCooldown = move.attack_uptime + 0.1
+        attacker.attkCooldown = move.attack_uptime + constants.ATTACK_COOLDOWN_BUFFER
         attacker.stunTimer = move.attacker_stun
 
         self.active_attks.append({
@@ -348,19 +348,19 @@ class GameSession:
 
 
 def send_msg(sock, data):
-    length = str(len(data)).zfill(8) #TODO: CONSTANTS
+    length = str(len(data)).zfill(constants.MSG_HEADER_LENGTH)
     sock.sendall(length.encode() + data)
 
 
 def recv_msg(sock):
-    header = sock.recv(8)
+    header = sock.recv(constants.MSG_HEADER_LENGTH)
     if not header: return None
     length = int(header.decode())
 
     chunks = []
     bytes_recd = 0
     while bytes_recd < length:
-        chunk = sock.recv(min(length - bytes_recd, 2048))
+        chunk = sock.recv(min(length - bytes_recd, constants.RECV_CHUNK_SIZE))
         if not chunk: break
         chunks.append(chunk)
         bytes_recd += len(chunk)
@@ -389,14 +389,8 @@ class GameServer:
 
         self.input_queue = queue.Queue()
         self.clients = {} #Player:socket
-        self.session = GameSession([], self.clients, SessionMap([Platform(Pose(400,500), 800, 100),
-                                                                 Platform(Pose(200,300), 150, 50),
-                                                                 Platform(Pose(600,300), 150, 50),
-
-                                                                 Platform(Pose(1500, 500), 800, 100),
-                                                                 Platform(Pose(1300, 300), 150, 50),
-                                                                 Platform(Pose(1700, 300), 150, 50)
-                                                                 ], "unnammed"))
+        platforms = [Platform(Pose(x, y), w, h) for x, y, w, h in constants.PLATFORMS]
+        self.session = GameSession([], self.clients, SessionMap(platforms, "unnammed"))
         self.user_manager = UserManager("users.json")
 
         self.private_key, self.public_key_bytes = self.get_keys()
@@ -410,7 +404,7 @@ class GameServer:
             public_key_bytes = private_key.public_key().public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
         else:
-            private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            private_key = rsa.generate_private_key(public_exponent=constants.RSA_PUBLIC_EXPONENT, key_size=constants.RSA_KEY_SIZE)
             pem_private = private_key.private_bytes(encoding=serialization.Encoding.PEM,format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.BestAvailableEncryption(KEY_PASSWORD))
             public_key_bytes = private_key.public_key().public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -463,7 +457,7 @@ class GameServer:
                 if not success:
                     num_of_failed += 1
                     print(f"Login/reg failed from: {client_socket}")
-                if(num_of_failed > 10): # too much, TODO:CONSTANTS
+                if(num_of_failed > constants.MAX_FAILED_LOGINS):
                     client_socket.close()
                     return
 
@@ -474,7 +468,7 @@ class GameServer:
             no_weapon = Weapon("none", moves)
             db_user = self.user_manager.users[username]
             user_obj = User(username, db_user["password"], db_user["wins"], db_user["loses"])
-            player = Player(user_obj, Pose(300, 400), no_weapon)
+            player = Player(user_obj, Pose(constants.INITIAL_SPAWN_X, constants.INITIAL_SPAWN_Y), no_weapon)
 
             self.clients[player] = client_socket
             self.client_sessions[client_socket] = session
@@ -554,10 +548,10 @@ class GameServer:
                     self.session.spawn_timer = 0
                     db_updated = False
                     for p in self.clients.keys():
-                        p.lives = 3#TODO:CONSTANTS
+                        p.lives = constants.DEFAULT_LIVES
                         p.isDead = False
                         p.hp = 0
-                        p.currentPose = Pose(400, 400)#TODO:CONSTANTS
+                        p.currentPose = Pose(constants.RESTART_SPAWN_X, constants.RESTART_SPAWN_Y)
                         p.velX = 0
                         p.velY = 0
                         default_moves = {}
@@ -568,7 +562,7 @@ class GameServer:
                     continue
                 self.process_input(player, msg)
 
-            self.session.update(1 / 60) #60fps might change later TODO: put in constants
+            self.session.update(constants.TICK_DURATION)
             if self.session.winner and not db_updated:
                 if self.session.winner != "tie":
                     winner = self.session.winner
@@ -581,7 +575,7 @@ class GameServer:
             self.broadcast_state()
 
 
-            sleep_time = 1/60 - (time.time() - start_time)
+            sleep_time = constants.TICK_DURATION - (time.time() - start_time)
             if (sleep_time > 0):
                 time.sleep(sleep_time)
 
@@ -607,19 +601,19 @@ class GameServer:
             player.is_shielding = False
 
             if player.isOnGround:
-                player.velY = -9
+                player.velY = constants.JUMP_VELOCITY
                 player.isOnGround = False
                 player.can_double_jump = True
                 player.has_doubleJamped = False
-                player.jump_cooldown = 0.1
+                player.jump_cooldown = constants.JUMP_COOLDOWN
                 player.jumps_remain = 1
                 print("jump")
 
             elif player.jumps_remain > 0:
-                player.velY = -9
+                player.velY = constants.JUMP_VELOCITY
                 player.has_doubleJamped = True
                 player.can_double_jump = False
-                player.jump_cooldown = 0.1
+                player.jump_cooldown = constants.JUMP_COOLDOWN
                 player.jumps_remain -= 1
                 print("doublejump")
 
@@ -635,7 +629,7 @@ class GameServer:
 
 
 if __name__ == "__main__":
-    server = GameServer("0.0.0.0", 3141)
+    server = GameServer("0.0.0.0", constants.SERVER_PORT)
     main_game_thread = threading.Thread(target=server.main_loop, daemon=True)
     main_game_thread.start()
     print("started!!!!!")

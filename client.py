@@ -48,13 +48,13 @@ def connect_to_server(host, port):
 
 
 def main():
-    sock, session = connect_to_server("127.0.0.1", 3141)
+    sock, session = connect_to_server("127.0.0.1", constants.SERVER_PORT)
 
     pygame.init()
-    screen = pygame.display.set_mode((1920, 1080), pygame.SCALED | pygame.FULLSCREEN | pygame.DOUBLEBUF)#you can actually just merge flags like that in pygame https://www.pygame.org/docs/ref/display.html#pygame.display.set_mode
+    screen = pygame.display.set_mode((constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT), pygame.SCALED | pygame.FULLSCREEN | pygame.DOUBLEBUF)#you can actually just merge flags like that in pygame https://www.pygame.org/docs/ref/display.html#pygame.display.set_mode
     clock = pygame.time.Clock()
 
-    font = pygame.font.SysFont(None, 36)
+    font = pygame.font.SysFont(None, constants.FONT_SIZE_LARGE)
     username_text = ""
     password_text = ""
     active_field = "username"
@@ -68,22 +68,22 @@ def main():
         animations[anim_name] = constants.get_animation(animation_page_path, constants.FALCON_ANIMATIONS, anim_name, scale=2)
 
     while not logged_in:
-        screen.fill((15, 15, 20))
+        screen.fill(constants.COLOR_BG_LOGIN)
 
-        title_img = font.render("Login" if mode == "login" else "Register", True, (255, 255, 255))
+        title_img = font.render("Login" if mode == "login" else "Register", True, constants.COLOR_WHITE)
         user_label = font.render(f"Username: {username_text}", True,
-                                 (255, 255, 0) if active_field == "username" else (255, 255, 255))
+                                 constants.COLOR_ACTIVE_FIELD if active_field == "username" else constants.COLOR_WHITE)
         pass_label = font.render(f"Password: {'*' * len(password_text)}", True,
-                                 (255, 255, 0) if active_field == "password" else (255, 255, 255))
-        err_label = font.render(error_message, True, (255, 100, 100))
+                                 constants.COLOR_ACTIVE_FIELD if active_field == "password" else constants.COLOR_WHITE)
+        err_label = font.render(error_message, True, constants.COLOR_ERROR)
         #
-        switch_lable = font.render("F1 to switch to REGISTER" if mode == "login" else "F1 to switch to LOGIN", True, (0, 200, 255))
+        switch_lable = font.render("F1 to switch to REGISTER" if mode == "login" else "F1 to switch to LOGIN", True, constants.COLOR_SWITCH_LABEL)
 
-        screen.blit(title_img, (100, 50))
-        screen.blit(user_label, (100, 150))
-        screen.blit(pass_label, (100, 200))
-        screen.blit(switch_lable, (100, 250))
-        screen.blit(err_label, (100, 320))
+        screen.blit(title_img, constants.LOGIN_TITLE_POS)
+        screen.blit(user_label, constants.LOGIN_USERNAME_POS)
+        screen.blit(pass_label, constants.LOGIN_PASSWORD_POS)
+        screen.blit(switch_lable, constants.LOGIN_SWITCH_POS)
+        screen.blit(err_label, constants.LOGIN_ERROR_POS)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -125,41 +125,41 @@ def main():
 
 
     print("login")
-    font = pygame.font.SysFont(None, 24)
+    font = pygame.font.SysFont(None, constants.FONT_SIZE_SMALL)
 
     threading.Thread(target=receiver_thread, args=(sock, session), daemon=True).start()
 
     running = True
     last_move = None
     while running:
-        screen.fill((30, 30, 30))
+        screen.fill(constants.COLOR_BG_GAME)
         for plat in current_game_state.get("platforms", []):
             rect_x = plat["x"] - (plat["w"] / 2)
             rect_y = plat["y"] - (plat["h"] / 2)
-            pygame.draw.rect(screen, (100, 100, 100), (rect_x, rect_y, plat["w"], plat["h"]))
+            pygame.draw.rect(screen, constants.COLOR_PLATFORM, (rect_x, rect_y, plat["w"], plat["h"]))
 
         for item in current_game_state.get("objects", []):
-            item_rect = pygame.Rect(0, 0, 30, 30)
+            item_rect = pygame.Rect(0, 0, constants.ITEM_RENDER_WIDTH, constants.ITEM_RENDER_HEIGHT)
             item_rect.center = (int(item["x"]), int(item["y"]))
-            pygame.draw.rect(screen, (255, 140, 0), item_rect)
+            pygame.draw.rect(screen, constants.COLOR_DROPPED_ITEM, item_rect)
 
         for atk in current_game_state.get("attacks", []):
             rect_x = atk["x"] - (atk["w"] / 2)
             rect_y = atk["y"] - (atk["h"] / 2)
-            pygame.draw.rect(screen, (255, 255, 0), (rect_x, rect_y, atk["w"], atk["h"]))
+            pygame.draw.rect(screen, constants.COLOR_ATTACK, (rect_x, rect_y, atk["w"], atk["h"]))
 
-        dmg_lives_pos = Pose(50,750)
+        dmg_lives_pos = Pose(constants.HUD_DMG_LIVES_X, constants.HUD_DMG_LIVES_Y)
         for p in current_game_state["players"]:
             try:
                 x, y = int(p["x"]), int(p["y"])
-                font = pygame.font.SysFont(None, 32)
-                img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, (255, 255, 255))
+                font = pygame.font.SysFont(None, constants.FONT_SIZE_MEDIUM)
+                img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, constants.COLOR_WHITE)
                 screen.blit(img, (dmg_lives_pos.x, dmg_lives_pos.y))
-                dmg_lives_pos.x += 300
+                dmg_lives_pos.x += constants.HUD_PLAYER_SPACING
 
 
                 anim_frames = animations.get(p.get("state"), animations["stand"]) #if no spesific state animation then default to stand
-                frame_idx = (pygame.time.get_ticks() // 120) % len(anim_frames) #TODO:CONSTANTS
+                frame_idx = (pygame.time.get_ticks() // constants.ANIMATION_FRAME_INTERVAL) % len(anim_frames)
                 current_frame = anim_frames[frame_idx]
 
                 if not p.get("facingRight"):
@@ -169,14 +169,14 @@ def main():
                 screen.blit(current_frame, img_rect)
 
                 if p.get("is_shielding"):
-                    radius = int(p["shield_hp"])*0.8 + 10
+                    radius = int(p["shield_hp"]) * constants.SHIELD_VISUAL_SCALE + constants.SHIELD_VISUAL_MIN_RADIUS
                     shield_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-                    pygame.draw.circle(shield_surface, (100, 150, 255, 150), (radius, radius), radius)
+                    pygame.draw.circle(shield_surface, constants.COLOR_SHIELD, (radius, radius), radius)
                     screen.blit(shield_surface, (x - radius, y - radius))
 
-                font = pygame.font.SysFont(None, 24)
-                img = font.render(p["username"], True, (255, 255, 255))
-                screen.blit(img, (x, y-30))
+                font = pygame.font.SysFont(None, constants.FONT_SIZE_SMALL)
+                img = font.render(p["username"], True, constants.COLOR_WHITE)
+                screen.blit(img, (x, y + constants.USERNAME_Y_OFFSET))
             except Exception as e:
                 print(e)
 
@@ -232,7 +232,7 @@ def main():
         pygame.display.flip()
 
 
-        clock.tick(60)
+        clock.tick(constants.CLIENT_FPS)
 
     pygame.quit()
 
