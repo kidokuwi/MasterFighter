@@ -396,6 +396,8 @@ class GameServer:
         self.private_key, self.public_key_bytes = self.get_keys()
         self.client_sessions = {}  #socket:SecureSession
 
+        self.game_started = False
+
     def get_keys(self):
         if os.path.exists(PRIVATE_KEY_FILE):
             with open(PRIVATE_KEY_FILE, "rb") as f:
@@ -502,10 +504,13 @@ class GameServer:
                       "platforms": [],
                       "attacks": [],
                       "winner": winner,
-                      "objects": []}
+                      "objects": [],
+                      "game_started": self.game_started}
         players = self.clients.keys()
         for player in players:
-            game_state["players"].append({"username" : player.user.username, "x":player.currentPose.x, "y":player.currentPose.y,
+            user_stats = self.user_manager.users.get(player.user.username, {})
+            game_state["players"].append({"username" : player.user.username, "wins": user_stats.get("wins", 0),"loses": user_stats.get("loses", 0),
+                                          "x":player.currentPose.x, "y":player.currentPose.y,
                                           "hp": player.hp, "facingRight" : player.facingRight
                                         , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
                                           "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown(),
@@ -542,27 +547,31 @@ class GameServer:
             start_time = time.time()
             while not self.input_queue.empty():
                 player, msg = self.input_queue.get()
-                if msg.get("action") == "restart" and self.session.winner:
+                if msg.get("action") == "restart" and self.session.winner and self.game_started:
+                    self.game_started = False
                     self.session.winner = None
-                    self.session.dropped_weapons = []
+                    self.session.objects = []
                     self.session.spawn_timer = 0
                     db_updated = False
                     for p in self.clients.keys():
                         p.lives = constants.DEFAULT_LIVES
                         p.isDead = False
                         p.hp = 0
-                        p.currentPose = Pose(constants.RESTART_SPAWN_X, constants.RESTART_SPAWN_Y)
+                        p.currentPose.x = constants.RESTART_SPAWN_X
+                        p.currentPose.y = constants.RESTART_SPAWN_Y
+                        p.isOnGround = False
                         p.velX = 0
                         p.velY = 0
                         default_moves = {}
                         for m_name, m_stats in constants.WEAPONS["hand"].items():
                             default_moves[m_name] = Attack(*m_stats)
                         p.weapon = Weapon("hand", default_moves)
-                    continue
-                    continue
-                self.process_input(player, msg)
+                else:
+                    self.process_input(player, msg)
 
-            self.session.update(constants.TICK_DURATION)
+            if self.game_started:
+                self.session.update(constants.TICK_DURATION)
+
             if self.session.winner and not db_updated:
                 if self.session.winner != "tie":
                     winner = self.session.winner
@@ -622,6 +631,10 @@ class GameServer:
                 player.is_shielding = msg.get("active")
                 if player.is_shielding:
                     player.velX = 0
+
+        elif action == "start_game":
+            if len(self.clients) >= 2:
+                self.game_started = True
 
 
 

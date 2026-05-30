@@ -132,106 +132,145 @@ def main():
     running = True
     last_move = None
     while running:
-        screen.fill(constants.COLOR_BG_GAME)
-        for plat in current_game_state.get("platforms", []):
-            rect_x = plat["x"] - (plat["w"] / 2)
-            rect_y = plat["y"] - (plat["h"] / 2)
-            pygame.draw.rect(screen, constants.COLOR_PLATFORM, (rect_x, rect_y, plat["w"], plat["h"]))
 
-        for item in current_game_state.get("objects", []):
-            item_rect = pygame.Rect(0, 0, constants.ITEM_RENDER_WIDTH, constants.ITEM_RENDER_HEIGHT)
-            item_rect.center = (int(item["x"]), int(item["y"]))
-            pygame.draw.rect(screen, constants.COLOR_DROPPED_ITEM, item_rect)
+        is_started = current_game_state.get("game_started", False)
+        winner = current_game_state.get("winner")  # השרת כבר שולח את זה ב-broadcast_state
 
-        for atk in current_game_state.get("attacks", []):
-            rect_x = atk["x"] - (atk["w"] / 2)
-            rect_y = atk["y"] - (atk["h"] / 2)
-            pygame.draw.rect(screen, constants.COLOR_ATTACK, (rect_x, rect_y, atk["w"], atk["h"]))
+        if winner:
+            screen.fill((0, 0, 0))
+            win_text = font.render(f"THE WINNER IS: {winner}", True, (255, 215, 0))
+            sub_text = font.render("'R' to return to lobby", True, (255, 255, 255))
 
-        dmg_lives_pos = Pose(constants.HUD_DMG_LIVES_X, constants.HUD_DMG_LIVES_Y)
-        for p in current_game_state["players"]:
-            try:
-                x, y = int(p["x"]), int(p["y"])
-                font = pygame.font.SysFont(None, constants.FONT_SIZE_MEDIUM)
-                img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, constants.COLOR_WHITE)
-                screen.blit(img, (dmg_lives_pos.x, dmg_lives_pos.y))
-                dmg_lives_pos.x += constants.HUD_PLAYER_SPACING
+            screen.blit(win_text, (constants.SCREEN_WIDTH // 2 - 150, 200))
+            screen.blit(sub_text, (constants.SCREEN_WIDTH // 2 - 150, 300))
 
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: running = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_r:
+                        restart_msg = {"action": "restart"}
+                        send_msg(sock, session.encrypt(json.dumps(restart_msg).encode()))
 
-                anim_frames = animations.get(p.get("state"), animations["stand"]) #if no spesific state animation then default to stand
-                frame_idx = (pygame.time.get_ticks() // constants.ANIMATION_FRAME_INTERVAL) % len(anim_frames)
-                current_frame = anim_frames[frame_idx]
+        elif not is_started:
+            screen.fill((20, 20, 30))
+            title = font.render("Waiting Room - 'Enter' to start", True, (255, 255, 255))
+            screen.blit(title, (100, 50))
 
-                if not p.get("facingRight"):
-                    current_frame = pygame.transform.flip(current_frame, True, False)
+            y_offset = 150
+            for p in current_game_state.get("players", []):
+                player_info = f"{p['username']}  Wins: {p.get('wins', 0)}  Losses: {p.get('loses', 0)}"
+                player_label = font.render(player_info, True, (0, 255, 100))
+                screen.blit(player_label, (100, y_offset))
+                y_offset += 40
 
-                img_rect = current_frame.get_rect(center=(x, y))
-                screen.blit(current_frame, img_rect)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
 
-                if p.get("is_shielding"):
-                    radius = int(p["shield_hp"]) * constants.SHIELD_VISUAL_SCALE + constants.SHIELD_VISUAL_MIN_RADIUS
-                    shield_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-                    pygame.draw.circle(shield_surface, constants.COLOR_SHIELD, (radius, radius), radius)
-                    screen.blit(shield_surface, (x - radius, y - radius))
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        start_msg = {"action": "start_game"}
+                        send_msg(sock, session.encrypt(json.dumps(start_msg).encode()))
 
-                font = pygame.font.SysFont(None, constants.FONT_SIZE_SMALL)
-                img = font.render(p["username"], True, constants.COLOR_WHITE)
-                screen.blit(img, (x, y + constants.USERNAME_Y_OFFSET))
-            except Exception as e:
-                print(e)
-
-        keys = pygame.key.get_pressed()
-        shielding_action = False
-        if keys[pygame.K_e]:#server handle if in the air
-            shielding_action = True
-
-        shield_msg = {"action": "shield", "active": shielding_action}
-        send_msg(sock, session.encrypt(json.dumps(shield_msg).encode()))
-        move_action = None
-
-        player_running = False
-        if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
-            player_running = True
-
-        if keys[pygame.K_a]:
-            move_action = {"action": "move", "direction": "left", "run": player_running}
-        elif keys[pygame.K_d]:
-            move_action = {"action": "move", "direction": "right" , "run": player_running}
         else:
-            move_action = {"action": "move", "direction": "none" , "run": player_running}
+            screen.fill(constants.COLOR_BG_GAME)
+            for plat in current_game_state.get("platforms", []):
+                rect_x = plat["x"] - (plat["w"] / 2)
+                rect_y = plat["y"] - (plat["h"] / 2)
+                pygame.draw.rect(screen, constants.COLOR_PLATFORM, (rect_x, rect_y, plat["w"], plat["h"]))
+
+            for item in current_game_state.get("objects", []):
+                item_rect = pygame.Rect(0, 0, constants.ITEM_RENDER_WIDTH, constants.ITEM_RENDER_HEIGHT)
+                item_rect.center = (int(item["x"]), int(item["y"]))
+                pygame.draw.rect(screen, constants.COLOR_DROPPED_ITEM, item_rect)
+
+            for atk in current_game_state.get("attacks", []):
+                rect_x = atk["x"] - (atk["w"] / 2)
+                rect_y = atk["y"] - (atk["h"] / 2)
+                pygame.draw.rect(screen, constants.COLOR_ATTACK, (rect_x, rect_y, atk["w"], atk["h"]))
+
+            dmg_lives_pos = Pose(constants.HUD_DMG_LIVES_X, constants.HUD_DMG_LIVES_Y)
+            for p in current_game_state["players"]:
+                try:
+                    x, y = int(p["x"]), int(p["y"])
+                    font = pygame.font.SysFont(None, constants.FONT_SIZE_MEDIUM)
+                    img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, constants.COLOR_WHITE)
+                    screen.blit(img, (dmg_lives_pos.x, dmg_lives_pos.y))
+                    dmg_lives_pos.x += constants.HUD_PLAYER_SPACING
 
 
-        if move_action != last_move:
-            send_msg(sock, session.encrypt(json.dumps(move_action).encode()))
+                    anim_frames = animations.get(p.get("state"), animations["stand"]) #if no spesific state animation then default to stand
+                    frame_idx = (pygame.time.get_ticks() // constants.ANIMATION_FRAME_INTERVAL) % len(anim_frames)
+                    current_frame = anim_frames[frame_idx]
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+                    if not p.get("facingRight"):
+                        current_frame = pygame.transform.flip(current_frame, True, False)
 
-            if event.type == pygame.KEYDOWN:
-                action = None
-                if event.key == pygame.K_SPACE:
-                    action = {"action": "jump"}
-                if action:
-                    encrypted_action = session.encrypt(json.dumps(action).encode())
-                    send_msg(sock, encrypted_action)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1: #left click
-                    atk_type = "natural"
-                    if keys[pygame.K_w]:
-                        atk_type = "up"
-                    elif keys[pygame.K_s]:
-                        atk_type = "down"
-                    elif keys[pygame.K_a] or keys[pygame.K_d]:
-                        atk_type = "side"
+                    img_rect = current_frame.get_rect(center=(x, y))
+                    screen.blit(current_frame, img_rect)
 
-                    action = {"action": "attack", "type": atk_type}
-                    encrypted_action = session.encrypt(json.dumps(action).encode())
-                    send_msg(sock, encrypted_action)
+                    if p.get("is_shielding"):
+                        radius = int(p["shield_hp"]) * constants.SHIELD_VISUAL_SCALE + constants.SHIELD_VISUAL_MIN_RADIUS
+                        shield_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+                        pygame.draw.circle(shield_surface, constants.COLOR_SHIELD, (radius, radius), radius)
+                        screen.blit(shield_surface, (x - radius, y - radius))
+
+                    font = pygame.font.SysFont(None, constants.FONT_SIZE_SMALL)
+                    img = font.render(p["username"], True, constants.COLOR_WHITE)
+                    screen.blit(img, (x, y + constants.USERNAME_Y_OFFSET))
+                except Exception as e:
+                    print(e)
+
+            keys = pygame.key.get_pressed()
+            shielding_action = False
+            if keys[pygame.K_e]:#server handle if in the air
+                shielding_action = True
+
+            shield_msg = {"action": "shield", "active": shielding_action}
+            send_msg(sock, session.encrypt(json.dumps(shield_msg).encode()))
+            move_action = None
+
+            player_running = False
+            if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
+                player_running = True
+
+            if keys[pygame.K_a]:
+                move_action = {"action": "move", "direction": "left", "run": player_running}
+            elif keys[pygame.K_d]:
+                move_action = {"action": "move", "direction": "right" , "run": player_running}
+            else:
+                move_action = {"action": "move", "direction": "none" , "run": player_running}
+
+
+            if move_action != last_move:
+                send_msg(sock, session.encrypt(json.dumps(move_action).encode()))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+                if event.type == pygame.KEYDOWN:
+                    action = None
+                    if event.key == pygame.K_SPACE:
+                        action = {"action": "jump"}
+                    if action:
+                        encrypted_action = session.encrypt(json.dumps(action).encode())
+                        send_msg(sock, encrypted_action)
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1: #left click
+                        atk_type = "natural"
+                        if keys[pygame.K_w]:
+                            atk_type = "up"
+                        elif keys[pygame.K_s]:
+                            atk_type = "down"
+                        elif keys[pygame.K_a] or keys[pygame.K_d]:
+                            atk_type = "side"
+
+                        action = {"action": "attack", "type": atk_type}
+                        encrypted_action = session.encrypt(json.dumps(action).encode())
+                        send_msg(sock, encrypted_action)
 
         pygame.display.flip()
-
-
         clock.tick(constants.CLIENT_FPS)
 
     pygame.quit()
