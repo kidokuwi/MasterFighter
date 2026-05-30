@@ -86,6 +86,10 @@ class Player:
         self.isDead = False
         self.lives = 3#TODO:CONSTANTS
 
+        self.shield_hp = constants.MAX_SHIELD_HP
+        self.is_shielding = False
+        self.shield_broken = False
+
     def isFacingRight(self):
         return 1 if self.facingRight else 0
 
@@ -97,6 +101,7 @@ class Player:
         return self.attkCooldown > 0
 
     def get_state_string(self):
+        if self.is_shielding: return "shield"
         if not self.isOnGround:
             if self.jumps_remain == 1: return "jump"
             if self.jumps_remain == 0: return "doubleJump"
@@ -112,9 +117,25 @@ class Player:
         self.invinciblityTimer = max(0, self.invinciblityTimer - timePassed)
         self.attkCooldown = max(0, self.attkCooldown - timePassed)
         self.jump_cooldown = max(0, self.jump_cooldown - timePassed)
+        if self.is_shielding:
+            shield_alive = True if self.shield_hp > 0 else False
+            self.shield_hp -= constants.SHIELD_DECAY_RATE
+            if self.shield_hp <= 0 and shield_alive:#decay broke shield
+                self.is_shielding = False
+                self.shield_broken = True
+
+            elif self.shield_hp <= 0:
+                self.shield_hp = 0
+                self.is_shielding = False
+                self.stunTimer = constants.SHIELD_STUN_DURATION
+                self.shield_broken = True
+        else:
+            self.shield_hp = min(constants.MAX_SHIELD_HP, self.shield_hp + constants.SHIELD_REGEN_RATE)
+            if self.shield_hp > 20:
+                self.shield_broken = False
 
     def updatePose(self, timePassed):
-        if self.current_movement != "none" and not self.isStunned():
+        if self.current_movement != "none" and not self.isStunned() and not self.is_shielding:
             move_speed = constants.running_speed if self.is_running else constants.walking_speed
             if self.current_movement == "left":
                 self.velX = -move_speed
@@ -230,28 +251,31 @@ class GameSession:
                         self.winner = "tie"
         active_attacks = self.active_attks
         for attack in active_attacks:
-            attack['timer'] -= timePassed
+            attack["timer"] -= timePassed
             attacker = attack["attacker"]
             direction = 1 if attacker.facingRight else -1
-            attack["x"] = attacker.currentPose.x + ((attacker.hitBox.width / 2) + (attacker.hitBox.width / 2) + (attack['w'] / 2) + attack['offsetX'])*direction
-            attack['y'] = attacker.currentPose.y + attack['offsetY']
+            attack["x"] = attacker.currentPose.x + ((attacker.hitBox.width / 2) + (attacker.hitBox.width / 2) + (attack["w"] / 2) + attack["offsetX"])*direction
+            attack["y"] = attacker.currentPose.y + attack["offsetY"]
 
-            atk_pose = Pose(attack['x'], attack['y'])
-            atk_hitbox = HitBox(atk_pose, attack['w'], attack['h'])
+            atk_pose = Pose(attack["x"], attack["y"])
+            atk_hitbox = HitBox(atk_pose, attack["w"], attack["h"])
 
             for player in self.players.keys():
-                if player != attack['attacker'] and not player.isInvincible():
+                if player != attack["attacker"] and not player.isInvincible():
                     if atk_hitbox.checkCollision(player.hitBox):
-                        player.hp += attack['dmg']
-                        direction = 1 if attack['attacker'].facingRight else -1
-                        player.velX += (player.hp**2) * constants.defaultKnockbackMult * direction
-                        player.velY -= constants.defaultKnockbackMult
-                        player.stunTimer = attack['stun']
+                        if player.is_shielding:
+                            player.shield_hp -= attack["dmg"]
+                        else:
+                            player.hp += attack["dmg"]
+                            direction = 1 if attack["attacker"].facingRight else -1
+                            player.velX += (player.hp**2) * constants.defaultKnockbackMult * direction
+                            player.velY -= constants.defaultKnockbackMult
+                            player.stunTimer = attack["stun"]
 
-                        player.invinciblityTimer = 0.2#TODO:CONSTANTS
-                        print(f"hit {player.user.username} during uptime")
+                            player.invinciblityTimer = 0.2#TODO:CONSTANTS
+                            print(f"hit {player.user.username} during uptime")
 
-            if attack['timer'] <= 0:
+            if attack["timer"] <= 0:
                 self.active_attks.remove(attack)
 
 
@@ -455,7 +479,8 @@ class GameServer:
                                           "hp": player.hp, "facingRight" : player.facingRight
                                         , "weapon" : player.weapon.name if player.weapon else "None", "isInvincible": player.isInvincible(),
                                           "isStunned": player.isStunned(), "isOnAttackCooldown": player.isOnAttackCooldown(),
-                                          "lives": player.lives,"isDead": player.isDead, "state": player.get_state_string()})
+                                          "lives": player.lives,"isDead": player.isDead, "state": player.get_state_string(), "is_shielding": player.is_shielding,
+                                          "shield_hp": player.shield_hp})
         if self.session.sessionMap:
             for plat in self.session.sessionMap.platforms:
                 game_state["platforms"].append({"x": plat.hitBox.pose.x,"y": plat.hitBox.pose.y,"w": plat.hitBox.width,"h": plat.hitBox.height})
@@ -472,7 +497,7 @@ class GameServer:
                 if session:
                     send_msg(self.clients[player], session.encrypt(json_state))
             except Exception as e:
-                print(f"Error handling client:{player.user.username} : {e}")
+                print(f"error client:{player.user.username} : {e}")
 
 
     def main_loop(self):
@@ -517,7 +542,7 @@ class GameServer:
             return
 
         action = msg.get("action")
-        if action == "attack":
+        if action == "attack" and not player.is_shielding:
             self.session.handleAttack(player, msg.get("type"))
 
         elif action == "move":
@@ -530,6 +555,7 @@ class GameServer:
         elif action == "jump":
             if player.jump_cooldown > 0:
                 return
+            player.is_shielding = False
 
             if player.isOnGround:
                 player.velY = -9
@@ -547,6 +573,12 @@ class GameServer:
                 player.jump_cooldown = 0.1
                 player.jumps_remain -= 1
                 print("doublejump")
+
+        elif action == "shield":
+            if not player.shield_broken and player.isOnGround:
+                player.is_shielding = msg.get("active")
+                if player.is_shielding:
+                    player.velX = 0
 
 
 

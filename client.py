@@ -51,7 +51,7 @@ def main():
     sock, session = connect_to_server("127.0.0.1", 3141)
 
     pygame.init()
-    screen = pygame.display.set_mode((1920, 1080))
+    screen = pygame.display.set_mode((1920, 1080), pygame.SCALED | pygame.FULLSCREEN | pygame.DOUBLEBUF)#you can actually just merge flags like that in pygame https://www.pygame.org/docs/ref/display.html#pygame.display.set_mode
     clock = pygame.time.Clock()
 
     font = pygame.font.SysFont(None, 36)
@@ -64,7 +64,7 @@ def main():
     mode = "login"
     animation_page_path = "animations_falcon.png"
     animations = {}
-    for anim_name in constants.FALCON_ANIMATIONS.keys(): #might take time need check
+    for anim_name in constants.FALCON_ANIMATIONS.keys(): #TAKES ALOT OF TIME :(
         animations[anim_name] = constants.get_animation(animation_page_path, constants.FALCON_ANIMATIONS, anim_name, scale=2)
 
     while not logged_in:
@@ -130,7 +130,6 @@ def main():
     threading.Thread(target=receiver_thread, args=(sock, session), daemon=True).start()
 
     running = True
-
     last_move = None
     while running:
         screen.fill((30, 30, 30))
@@ -164,6 +163,12 @@ def main():
                 img_rect = current_frame.get_rect(center=(x, y))
                 screen.blit(current_frame, img_rect)
 
+                if p.get("is_shielding"):
+                    radius = int(p["shield_hp"]) + 10
+                    shield_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(shield_surface, (100, 150, 255, 150), (radius, radius), radius)
+                    screen.blit(shield_surface, (x - radius, y - radius))
+
                 font = pygame.font.SysFont(None, 24)
                 img = font.render(p["username"], True, (255, 255, 255))
                 screen.blit(img, (x, y-30))
@@ -171,6 +176,12 @@ def main():
                 print(e)
 
         keys = pygame.key.get_pressed()
+        shielding_action = False
+        if keys[pygame.K_s]:#server handle if in the air
+            shielding_action = True
+
+        shield_msg = {"action": "shield", "active": shielding_action}
+        send_msg(sock, session.encrypt(json.dumps(shield_msg).encode()))
         move_action = None
 
         player_running = False

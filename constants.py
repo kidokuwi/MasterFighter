@@ -10,6 +10,11 @@ gravity = 0.3
 
 walking_speed = 5
 running_speed = 10
+MAX_SHIELD_HP = 100
+
+SHIELD_REGEN_RATE = 0.2
+SHIELD_DECAY_RATE = 0.5
+SHIELD_STUN_DURATION = 3.0
 
 # (dmg, rangeX, rangeY, offsetX, offsetY, attack_uptime, stun, knockbackMult, attacker_stun)
 MOVE_NATURAL = (20, 50, 50, 10, 0, 0.4, 1.0, 1.0, 0.5)
