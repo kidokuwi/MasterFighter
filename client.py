@@ -6,7 +6,6 @@ import constants
 from main import send_msg, recv_msg, SecureSession, Pose
 import socket
 import json
-import os
 import pygame
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -134,15 +133,15 @@ def main():
     while running:
 
         is_started = current_game_state.get("game_started", False)
-        winner = current_game_state.get("winner")  # השרת כבר שולח את זה ב-broadcast_state
+        winner = current_game_state.get("winner")
 
         if winner:
-            screen.fill((0, 0, 0))
-            win_text = font.render(f"THE WINNER IS: {winner}", True, (255, 215, 0))
-            sub_text = font.render("'R' to return to lobby", True, (255, 255, 255))
+            screen.fill(constants.COLOR_BG_WINNER)
+            win_text = font.render(f"THE WINNER IS: {winner}", True, constants.COLOR_WINNER_TEXT)
+            sub_text = font.render("'R' to return to lobby", True, constants.COLOR_WHITE)
 
-            screen.blit(win_text, (constants.SCREEN_WIDTH // 2 - 150, 200))
-            screen.blit(sub_text, (constants.SCREEN_WIDTH // 2 - 150, 300))
+            screen.blit(win_text, (constants.SCREEN_WIDTH // 2 - constants.WINNER_TEXT_X_OFFSET, constants.WINNER_TEXT_Y))
+            screen.blit(sub_text, (constants.SCREEN_WIDTH // 2 - constants.WINNER_TEXT_X_OFFSET, constants.WINNER_SUBTEXT_Y))
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: running = False
@@ -152,22 +151,27 @@ def main():
                         send_msg(sock, session.encrypt(json.dumps(restart_msg).encode()))
 
         elif not is_started:
-            screen.fill((20, 20, 30))
-            title = font.render("Waiting Room - 'Enter' to start", True, (255, 255, 255))
-            screen.blit(title, (100, 50))
+            screen.fill(constants.COLOR_BG_LOBBY)
+            title = font.render("Waiting Room - 'Enter' to start", True, constants.COLOR_WHITE)
+            screen.blit(title, constants.LOBBY_TITLE_POS)
 
-            y_offset = 150
+            y_offset = constants.LOBBY_PLAYER_LIST_Y_START
             for p in current_game_state.get("players", []):
                 player_info = f"{p['username']}  Wins: {p.get('wins', 0)}  Losses: {p.get('loses', 0)}"
-                player_label = font.render(player_info, True, (0, 255, 100))
-                screen.blit(player_label, (100, y_offset))
-                y_offset += 40
+                player_label = font.render(player_info, True, constants.COLOR_PLAYER_INFO)
+                screen.blit(player_label, (constants.LOBBY_PLAYER_LIST_X, y_offset))
+                y_offset += constants.LOBBY_PLAYER_LIST_Y_SPACING
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
+                        quit_action = {"action": "quit"}
+                        encrypted_quit = session.encrypt(json.dumps(quit_action).encode())
+                        send_msg(sock, encrypted_quit)
+                        running = False
                     if event.key == pygame.K_RETURN:
                         start_msg = {"action": "start_game"}
                         send_msg(sock, session.encrypt(json.dumps(start_msg).encode()))

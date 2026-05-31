@@ -3,7 +3,6 @@ __author__ = "Ido Keysar"
 import hashlib
 import secrets
 import time
-from threading import main_thread
 
 import constants
 import socket
@@ -506,7 +505,7 @@ class GameServer:
                       "winner": winner,
                       "objects": [],
                       "game_started": self.game_started}
-        players = self.clients.keys()
+        players = list(self.clients.keys())
         for player in players:
             user_stats = self.user_manager.users.get(player.user.username, {})
             game_state["players"].append({"username" : player.user.username, "wins": user_stats.get("wins", 0),"loses": user_stats.get("loses", 0),
@@ -532,6 +531,7 @@ class GameServer:
             })
 
         json_state = json.dumps(game_state).encode()
+        print(json_state)
         for player in players:
             try:
                 session = self.client_sessions[self.clients[player]]
@@ -551,9 +551,10 @@ class GameServer:
                     self.game_started = False
                     self.session.winner = None
                     self.session.objects = []
+                    self.session.active_attks = []
                     self.session.spawn_timer = 0
                     db_updated = False
-                    for p in self.clients.keys():
+                    for p in list(self.clients.keys()):
                         p.lives = constants.DEFAULT_LIVES
                         p.isDead = False
                         p.hp = 0
@@ -569,7 +570,7 @@ class GameServer:
                 else:
                     self.process_input(player, msg)
 
-            if self.game_started:
+            if self.game_started and not self.session.winner:
                 self.session.update(constants.TICK_DURATION)
 
             if self.session.winner and not db_updated:
@@ -589,11 +590,23 @@ class GameServer:
                 time.sleep(sleep_time)
 
     def process_input(self, player, msg):
+        action = msg.get("action")
+        if action == "quit":
+            print(f"player left: {player.user.username}")
+            client_socket = self.clients.get(player)
+            if client_socket:
+                client_socket.close()
+            return
+
+        if action == "start_game":
+            print(len(self.clients))
+            if len(self.clients) >= 2:
+                self.game_started = True
+                return
 
         if player.isStunned():
             return
 
-        action = msg.get("action")
         if action == "attack" and not player.is_shielding:
             self.session.handleAttack(player, msg.get("type"))
 
@@ -631,10 +644,6 @@ class GameServer:
                 player.is_shielding = msg.get("active")
                 if player.is_shielding:
                     player.velX = 0
-
-        elif action == "start_game":
-            if len(self.clients) >= 2:
-                self.game_started = True
 
 
 
