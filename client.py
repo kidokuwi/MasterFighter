@@ -198,7 +198,7 @@ def main():
                 try:
                     x, y = int(p["x"]), int(p["y"])
                     font = pygame.font.SysFont(None, constants.FONT_SIZE_MEDIUM)
-                    img = font.render(f" {p['username']} {p['hp']}%" f" \n stocks: {p['lives']}", True, constants.COLOR_WHITE)
+                    img = font.render(f" {p['username']} {p['hp']}%  stocks: {p['lives']}", True, constants.COLOR_WHITE)
                     screen.blit(img, (dmg_lives_pos.x, dmg_lives_pos.y))
                     dmg_lives_pos.x += constants.HUD_PLAYER_SPACING
 

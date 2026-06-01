@@ -1,6 +1,6 @@
+__author__ = "Ido Keysar"
 import pygame
 
-__author__ = "Ido Keysar"
 #.venv\Scripts\activate
 defaultUserWidth = 50
 defaultUserHeight = 80

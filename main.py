@@ -531,7 +531,6 @@ class GameServer:
             })
 
         json_state = json.dumps(game_state).encode()
-        print(json_state)
         for player in players:
             try:
                 session = self.client_sessions[self.clients[player]]
@@ -625,19 +624,13 @@ class GameServer:
             if player.isOnGround:
                 player.velY = constants.JUMP_VELOCITY
                 player.isOnGround = False
-                player.can_double_jump = True
-                player.has_doubleJamped = False
                 player.jump_cooldown = constants.JUMP_COOLDOWN
                 player.jumps_remain = 1
-                print("jump")
 
             elif player.jumps_remain > 0:
                 player.velY = constants.JUMP_VELOCITY
-                player.has_doubleJamped = True
-                player.can_double_jump = False
                 player.jump_cooldown = constants.JUMP_COOLDOWN
                 player.jumps_remain -= 1
-                print("doublejump")
 
         elif action == "shield":
             if not player.shield_broken and player.isOnGround:
