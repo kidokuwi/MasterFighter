@@ -271,9 +271,12 @@ class GameSession:
             atk_hitbox = HitBox(atk_pose, attack["w"], attack["h"])
 
             for player in self.players.keys():
-                if player != attack["attacker"] and not player.isInvincible():
+                if player != attack["attacker"] and not player.isInvincible() and player not in attack["hit_players"]:
                     if atk_hitbox.checkCollision(player.hitBox):
+                        attack["hit_players"].append(player)
                         if player.is_shielding:
+                            print(
+                                f"[HIT] Shielding={player.is_shielding} | Shield HP={player.shield_hp} | Player HP={player.hp} | OnGround={player.isOnGround}")
                             player.shield_hp -= attack["dmg"]
                         else:
                             player.hp += attack["dmg"]
@@ -342,7 +345,8 @@ class GameSession:
             "offsetY": move.offsetY,
             "timer": move.attack_uptime,
             "dmg": move.dmg,
-            "stun": move.stun
+            "stun": move.stun,
+            "hit_players": []
         })
 
 
