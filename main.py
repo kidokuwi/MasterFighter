@@ -275,8 +275,6 @@ class GameSession:
                     if atk_hitbox.checkCollision(player.hitBox):
                         attack["hit_players"].append(player)
                         if player.is_shielding:
-                            print(
-                                f"[HIT] Shielding={player.is_shielding} | Shield HP={player.shield_hp} | Player HP={player.hp} | OnGround={player.isOnGround}")
                             player.shield_hp -= attack["dmg"]
                         else:
                             player.hp += attack["dmg"]
@@ -286,7 +284,6 @@ class GameSession:
                             player.stunTimer = attack["stun"]
 
                             player.invinciblityTimer = constants.HIT_INVINCIBILITY
-                            print(f"hit {player.user.username} during uptime")
 
             if attack["timer"] <= 0:
                 self.active_attks.remove(attack)
